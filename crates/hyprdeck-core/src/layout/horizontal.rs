@@ -22,6 +22,12 @@ pub struct HorizontalLayout {
     // No mutable state needed — horizontal layout is purely functional.
 }
 
+impl Default for HorizontalLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HorizontalLayout {
     pub fn new() -> Self {
         HorizontalLayout {}

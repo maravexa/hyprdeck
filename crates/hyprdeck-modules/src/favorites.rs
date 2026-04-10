@@ -149,7 +149,11 @@ impl PanelModule for FavoritesModule {
                     theme.colors.accent,
                     theme.border_radius * 0.5,
                 );
-                let letter = loaded.entry.label.chars().next()
+                let letter = loaded
+                    .entry
+                    .label
+                    .chars()
+                    .next()
                     .map(|c| c.to_uppercase().to_string())
                     .unwrap_or_else(|| "?".to_owned());
                 render_utils::draw_text_centered(
@@ -177,7 +181,11 @@ impl PanelModule for FavoritesModule {
                 }
                 EventResult::Handled
             }
-            InputEvent::MousePress { x, button: MouseButton::Left, .. } => {
+            InputEvent::MousePress {
+                x,
+                button: MouseButton::Left,
+                ..
+            } => {
                 if let Some(idx) = self.item_at_x(*x, bounds, icon_size) {
                     return EventResult::Action(self.loaded[idx].entry.action.clone());
                 }
@@ -218,7 +226,10 @@ mod tests {
     use hyprdeck_core::{ColorPalette, FontConfig, HyprState, Padding};
 
     fn action() -> Action {
-        Action::Exec { command: "true".into(), args: vec![] }
+        Action::Exec {
+            command: "true".into(),
+            args: vec![],
+        }
     }
 
     fn theme() -> ThemeContext {
@@ -230,8 +241,17 @@ mod tests {
                 urgent: [255, 80, 80, 255],
                 separator: [128, 128, 128, 128],
             },
-            fonts: FontConfig { family: "sans-serif".into(), size: 14.0, bold_family: None },
-            padding: Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 },
+            fonts: FontConfig {
+                family: "sans-serif".into(),
+                size: 14.0,
+                bold_family: None,
+            },
+            padding: Padding {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 4.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         }
@@ -248,10 +268,21 @@ mod tests {
     #[test]
     fn desired_size_scales_with_item_count() {
         let entries = vec![
-            FavoriteEntry { label: "A".into(), icon: "a".into(), action: action() },
-            FavoriteEntry { label: "B".into(), icon: "b".into(), action: action() },
+            FavoriteEntry {
+                label: "A".into(),
+                icon: "a".into(),
+                action: action(),
+            },
+            FavoriteEntry {
+                label: "B".into(),
+                icon: "b".into(),
+                action: action(),
+            },
         ];
-        let m = FavoritesModule::new(FavoritesConfig { entries, ..FavoritesConfig::default() });
+        let m = FavoritesModule::new(FavoritesConfig {
+            entries,
+            ..FavoritesConfig::default()
+        });
         let sz = m.desired_size(&theme());
         assert!(sz.width > 0.0);
     }
@@ -259,9 +290,21 @@ mod tests {
     #[test]
     fn item_at_x_returns_correct_index() {
         let entries = vec![
-            FavoriteEntry { label: "A".into(), icon: "a".into(), action: action() },
-            FavoriteEntry { label: "B".into(), icon: "b".into(), action: action() },
-            FavoriteEntry { label: "C".into(), icon: "c".into(), action: action() },
+            FavoriteEntry {
+                label: "A".into(),
+                icon: "a".into(),
+                action: action(),
+            },
+            FavoriteEntry {
+                label: "B".into(),
+                icon: "b".into(),
+                action: action(),
+            },
+            FavoriteEntry {
+                label: "C".into(),
+                icon: "c".into(),
+                action: action(),
+            },
         ];
         let m = FavoritesModule::new(FavoritesConfig {
             entries,
@@ -279,12 +322,18 @@ mod tests {
             FavoriteEntry {
                 label: "A".into(),
                 icon: "a".into(),
-                action: Action::Exec { command: "cmdA".into(), args: vec![] },
+                action: Action::Exec {
+                    command: "cmdA".into(),
+                    args: vec![],
+                },
             },
             FavoriteEntry {
                 label: "B".into(),
                 icon: "b".into(),
-                action: Action::Exec { command: "cmdB".into(), args: vec![] },
+                action: Action::Exec {
+                    command: "cmdB".into(),
+                    args: vec![],
+                },
             },
         ];
         let mut m = FavoritesModule::new(FavoritesConfig {
@@ -294,7 +343,11 @@ mod tests {
         });
         let bounds = Rect::new(0.0, 0.0, 200.0, 32.0);
         let result = m.handle_event(
-            &InputEvent::MousePress { x: 12.0, y: 10.0, button: MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 12.0,
+                y: 10.0,
+                button: MouseButton::Left,
+            },
             bounds,
         );
         assert!(
@@ -305,10 +358,15 @@ mod tests {
 
     #[test]
     fn missing_icon_does_not_panic() {
-        let entries = vec![
-            FavoriteEntry { label: "X".into(), icon: "__no_icon__".into(), action: action() },
-        ];
-        let m = FavoritesModule::new(FavoritesConfig { entries, ..FavoritesConfig::default() });
+        let entries = vec![FavoriteEntry {
+            label: "X".into(),
+            icon: "__no_icon__".into(),
+            action: action(),
+        }];
+        let m = FavoritesModule::new(FavoritesConfig {
+            entries,
+            ..FavoritesConfig::default()
+        });
         assert!(m.loaded[0].icon.is_none());
     }
 
@@ -316,7 +374,10 @@ mod tests {
     fn update_always_returns_false() {
         let mut m = FavoritesModule::new(FavoritesConfig::default());
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         assert!(!m.update(&ctx));
     }
 }

@@ -91,7 +91,11 @@ impl PanelModule for WeatherModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let sample = if self.display_text == "—" { "☀ 00°C" } else { &self.display_text };
+        let sample = if self.display_text == "—" {
+            "☀ 00°C"
+        } else {
+            &self.display_text
+        };
         let w = render_utils::estimate_text_width(sample, theme.fonts.size)
             + theme.padding.left
             + theme.padding.right;
@@ -101,11 +105,7 @@ impl PanelModule for WeatherModule {
 
     fn update(&mut self, _ctx: &UpdateContext<'_>) -> bool {
         // Check if the background task produced a new result.
-        let new_text = self
-            .shared
-            .try_lock()
-            .ok()
-            .and_then(|g| g.clone());
+        let new_text = self.shared.try_lock().ok().and_then(|g| g.clone());
 
         if let Some(text) = new_text {
             if text != self.display_text {
@@ -179,9 +179,11 @@ impl PanelModule for WeatherModule {
                 ConfigField {
                     key: "location".to_owned(),
                     label: "Location".to_owned(),
-                    description:
-                        "Latitude and longitude as \"lat,lon\", e.g. \"51.5,-0.1\".".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    description: "Latitude and longitude as \"lat,lon\", e.g. \"51.5,-0.1\"."
+                        .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: String::new(),
+                    },
                 },
                 ConfigField {
                     key: "unit".to_owned(),
@@ -219,8 +221,8 @@ fn parse_location(location: &str) -> Option<(f64, f64)> {
 
 /// Fetch current weather from Open-Meteo and return a formatted display string.
 async fn fetch_weather(location: &str, unit: &TemperatureUnit) -> Result<String, String> {
-    let (lat, lon) = parse_location(location)
-        .ok_or_else(|| format!("Invalid location string: '{location}'"))?;
+    let (lat, lon) =
+        parse_location(location).ok_or_else(|| format!("Invalid location string: '{location}'"))?;
 
     let temp_unit = match unit {
         TemperatureUnit::Celsius => "celsius",
@@ -316,7 +318,10 @@ mod tests {
     fn update_does_not_block_without_location() {
         let mut m = WeatherModule::new(WeatherConfig::default());
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         // Should return false without blocking since no location is set.
         let changed = m.update(&ctx);
         assert!(!changed);
@@ -334,8 +339,17 @@ mod tests {
                 urgent: [0; 4],
                 separator: [0; 4],
             },
-            fonts: FontConfig { family: "sans-serif".into(), size: 14.0, bold_family: None },
-            padding: Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 8.0 },
+            fonts: FontConfig {
+                family: "sans-serif".into(),
+                size: 14.0,
+                bold_family: None,
+            },
+            padding: Padding {
+                top: 4.0,
+                right: 8.0,
+                bottom: 4.0,
+                left: 8.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         };

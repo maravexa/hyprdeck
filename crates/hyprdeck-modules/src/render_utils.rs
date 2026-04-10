@@ -6,9 +6,7 @@
 
 use std::cell::RefCell;
 
-use cosmic_text::{
-    Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
-};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
 use hyprdeck_core::{Color, Point, Rect};
 use tiny_skia::{FillRule, LineCap, Paint, PathBuilder, PixmapPaint, Stroke, Transform};
 
@@ -55,7 +53,13 @@ pub fn fill_rounded_rect(pixmap: &mut Pixmap, rect: Rect, color: Color, radius: 
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
     paint.anti_alias = true;
-    pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 /// Fill a rounded rectangle with an additional opacity multiplier.
@@ -78,17 +82,17 @@ pub fn fill_circle(pixmap: &mut Pixmap, center: Point, radius: f32, color: Color
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
     paint.anti_alias = true;
-    pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 /// Stroke a line between two points.
-pub fn draw_line(
-    pixmap: &mut Pixmap,
-    from: Point,
-    to: Point,
-    color: Color,
-    width: f32,
-) {
+pub fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, color: Color, width: f32) {
     let mut pb = PathBuilder::new();
     pb.move_to(from.x, from.y);
     pb.line_to(to.x, to.y);
@@ -98,7 +102,11 @@ pub fn draw_line(
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
     paint.anti_alias = true;
-    let stroke = Stroke { width, line_cap: LineCap::Round, ..Stroke::default() };
+    let stroke = Stroke {
+        width,
+        line_cap: LineCap::Round,
+        ..Stroke::default()
+    };
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
@@ -149,7 +157,19 @@ pub fn draw_text(
     font_size: f32,
     color: Color,
 ) -> f32 {
-    with_font(|fs, sc| draw_text_impl(pixmap, text, rect, font_family, font_size, color, TextAlign::Left, fs, sc))
+    with_font(|fs, sc| {
+        draw_text_impl(
+            pixmap,
+            text,
+            rect,
+            font_family,
+            font_size,
+            color,
+            TextAlign::Left,
+            fs,
+            sc,
+        )
+    })
 }
 
 /// Draw horizontally and vertically centred text.  Returns rendered width.
@@ -161,7 +181,19 @@ pub fn draw_text_centered(
     font_size: f32,
     color: Color,
 ) -> f32 {
-    with_font(|fs, sc| draw_text_impl(pixmap, text, rect, font_family, font_size, color, TextAlign::Center, fs, sc))
+    with_font(|fs, sc| {
+        draw_text_impl(
+            pixmap,
+            text,
+            rect,
+            font_family,
+            font_size,
+            color,
+            TextAlign::Center,
+            fs,
+            sc,
+        )
+    })
 }
 
 /// Draw text truncated with '…' if it overflows `rect.width`.  Returns rendered width.
@@ -209,11 +241,7 @@ fn with_font<F, R>(f: F) -> R
 where
     F: FnOnce(&mut FontSystem, &mut SwashCache) -> R,
 {
-    FONT_SYSTEM.with(|fs| {
-        SWASH_CACHE.with(|sc| {
-            f(&mut fs.borrow_mut(), &mut sc.borrow_mut())
-        })
-    })
+    FONT_SYSTEM.with(|fs| SWASH_CACHE.with(|sc| f(&mut fs.borrow_mut(), &mut sc.borrow_mut())))
 }
 
 fn draw_text_impl(

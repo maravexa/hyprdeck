@@ -2,6 +2,7 @@ use tiny_skia::{FillRule, LineCap, Paint, PathBuilder, Pixmap, PixmapPaint, Stro
 
 use crate::geometry::{Point, Rect};
 use crate::layout::{Axis, LayoutResult};
+use crate::module::{PanelModule, ThemeContext};
 use crate::panel::{Color, ResolvedSeparator, ResolvedStyle};
 
 /// Canvas wraps a `tiny_skia::Pixmap` and provides high-level draw operations.
@@ -710,4 +711,38 @@ fn alpha_blend_pixel(
     data[idx + 1] = (out_g * 255.0 + 0.5) as u8;
     data[idx + 2] = (out_b * 255.0 + 0.5) as u8;
     data[idx + 3] = (out_a * 255.0 + 0.5) as u8;
+}
+
+// ── Panel-level rendering ─────────────────────────────────────────────────────
+
+/// Render a complete panel frame: clear canvas, draw background, render each
+/// module into its layout-assigned bounds, then draw separators.
+pub fn render_panel(
+    canvas: &mut Canvas,
+    layout: &LayoutResult,
+    modules: &[Box<dyn PanelModule>],
+    style: &ResolvedStyle,
+    theme_ctx: &ThemeContext,
+) {
+    // Clear to transparent
+    canvas.clear();
+
+    // Draw panel background
+    canvas.draw_panel_background(layout.background_bounds, style);
+
+    // Render each module into its assigned bounds
+    for (module_id, bounds) in &layout.module_bounds {
+        if let Some(module) = modules.iter().find(|m| m.id() == module_id) {
+            module.render(canvas.pixmap_mut(), theme_ctx, *bounds);
+        }
+    }
+
+    // Draw separators between modules
+    // Determine axis from layout (horizontal panels use horizontal axis)
+    let axis = if layout.total_size.width >= layout.total_size.height {
+        Axis::Horizontal
+    } else {
+        Axis::Vertical
+    };
+    canvas.draw_layout_separators(layout, axis, &style.separator);
 }

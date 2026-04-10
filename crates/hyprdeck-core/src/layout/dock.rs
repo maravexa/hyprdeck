@@ -14,7 +14,8 @@ use super::{LayoutResult, ModuleGroups, ModuleSizeProvider};
 #[derive(Debug, Clone)]
 pub struct DockLayout {
     config: DockLayoutConfig,
-    state: DockAnimState,
+    /// Mutable animation state, public for read access from `LayoutEngine`.
+    pub state: DockAnimState,
 }
 
 /// Tuning parameters for dock layout and magnification behaviour.

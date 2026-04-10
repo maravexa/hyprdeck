@@ -15,3 +15,6 @@ hyprdeck-themes  = { workspace = true }
 tokio            = { workspace = true }
 tracing          = { workspace = true }
 tracing-subscriber = { workspace = true }
+chrono           = { workspace = true }
+wayland-client   = { workspace = true }
+smithay-client-toolkit = { workspace = true }

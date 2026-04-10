@@ -1,0 +1,7 @@
+[build]
+# Uncomment for faster linking during development:
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-unknown-linux-gnu]
+# Wayland requires these system libraries
+# rustflags = []

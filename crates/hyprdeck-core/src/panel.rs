@@ -3,6 +3,9 @@ use crate::geometry::Edge;
 use crate::layout::LayoutEngine;
 use crate::module::PanelModule;
 
+/// RGBA colour stored as four bytes (0–255).
+pub type Color = [u8; 4];
+
 /// A single panel instance — one Wayland `zwlr_layer_surface_v1` surface.
 ///
 /// Each connected output may host one or more panels as declared by the active theme.
@@ -33,6 +36,8 @@ pub struct ResolvedStyle {
     pub padding: Padding,
     pub border_radius: f32,
     pub background_opacity: f32,
+    /// Separator line styling between adjacent modules.
+    pub separator: ResolvedSeparator,
 }
 
 /// RGBA colour palette for a panel.
@@ -65,9 +70,49 @@ pub struct Padding {
     pub left: f32,
 }
 
+/// Resolved separator styling between modules within a group.
+#[derive(Debug, Clone)]
+pub struct ResolvedSeparator {
+    /// Whether separators are drawn at all.
+    pub visible: bool,
+    /// Line thickness in logical pixels.
+    pub width: f32,
+    /// Space on each side of the separator line.
+    pub margin: f32,
+    /// Separator line colour.
+    pub color: Color,
+}
+
+impl Default for ResolvedSeparator {
+    fn default() -> Self {
+        Self {
+            visible: true,
+            color: [128, 128, 128, 128],
+            width: 1.0,
+            margin: 4.0,
+        }
+    }
+}
+
 impl ColorPalette {
     /// Parse an `#rrggbb` or `#rrggbbaa` hex string into an RGBA byte array.
     pub fn parse_hex(s: &str) -> Option<[u8; 4]> {
-        todo!()
+        let s = s.strip_prefix('#')?;
+        match s.len() {
+            6 => {
+                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+                Some([r, g, b, 255])
+            }
+            8 => {
+                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+                let a = u8::from_str_radix(&s[6..8], 16).ok()?;
+                Some([r, g, b, a])
+            }
+            _ => None,
+        }
     }
 }

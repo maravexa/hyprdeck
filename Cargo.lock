@@ -969,12 +969,16 @@ name = "hyprdeck-modules"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cosmic-text",
  "fn0rd",
  "freedesktop-icons",
  "hyprdeck-core",
+ "image",
  "nix",
  "reqwest",
  "serde",
+ "serde_json",
+ "tiny-skia",
  "tokio",
  "toml",
  "tracing",

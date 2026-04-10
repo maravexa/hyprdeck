@@ -158,7 +158,11 @@ impl Canvas {
             return;
         };
 
-        let paint = Paint { shader: gradient, anti_alias: false, ..Paint::default() };
+        let paint = Paint {
+            shader: gradient,
+            anti_alias: false,
+            ..Paint::default()
+        };
         self.pixmap.fill_path(
             &path,
             &paint,
@@ -228,7 +232,10 @@ impl Canvas {
         let scale_y = dest.height / h as f32;
         let transform = Transform::from_scale(scale_x, scale_y);
 
-        let paint = PixmapPaint { opacity: opacity.clamp(0.0, 1.0), ..PixmapPaint::default() };
+        let paint = PixmapPaint {
+            opacity: opacity.clamp(0.0, 1.0),
+            ..PixmapPaint::default()
+        };
 
         self.pixmap.draw_pixmap(
             dest.x as i32,

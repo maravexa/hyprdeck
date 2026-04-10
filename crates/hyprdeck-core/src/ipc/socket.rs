@@ -9,7 +9,7 @@
 //! the application — modules hold an `Arc<RwLock<HyprState>>` and simply
 //! see state snap back into place when Hyprland comes back.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -187,8 +187,8 @@ async fn reader_loop(
 /// loop retries forever). The `None` branch is kept so callers don't
 /// have to handle cancellation as a separate code path.
 async fn reconnect(
-    event_socket_path: &PathBuf,
-    command_socket_path: &PathBuf,
+    event_socket_path: &Path,
+    command_socket_path: &Path,
     state: &Arc<RwLock<HyprState>>,
     backoff: &mut Duration,
 ) -> Option<UnixStream> {

@@ -18,6 +18,12 @@ pub struct VerticalLayout {
     // No mutable state needed — vertical layout is purely functional.
 }
 
+impl Default for VerticalLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VerticalLayout {
     pub fn new() -> Self {
         VerticalLayout {}

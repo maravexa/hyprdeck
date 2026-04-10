@@ -2,6 +2,7 @@
 
 **A modular, themeable panel / taskbar / dock for Hyprland** — ships opinionated, ready-to-use themes so you can be up and running in minutes.
 
+[![CI](https://github.com/maravexa/hyprdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/maravexa/hyprdeck/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-WIP-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 

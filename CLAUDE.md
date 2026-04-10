@@ -170,6 +170,27 @@ command socket, then kept live by applying `HyprEvent`s from the event socket.
 
 ---
 
+## CI
+
+GitHub Actions runs on every push to `main` and all PRs:
+
+- **check**: fmt, clippy (-D warnings), cargo check
+- **test**: workspace tests + doc tests
+- **build**: release build verification
+- **docs**: rustdoc with -D warnings
+- **msrv**: verify against Rust 1.85.0
+
+Security audit runs on push to main and weekly via cron.
+
+Run locally before pushing:
+```sh
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+---
+
 ## Related Projects
 
 | Project | Status | Integration Point |

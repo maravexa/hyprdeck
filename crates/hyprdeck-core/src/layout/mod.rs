@@ -94,6 +94,22 @@ impl LayoutEngine {
             _ => false,
         }
     }
+
+    /// Ensure the dock animation state vectors match the given icon count.
+    /// No-op for non-dock layouts.
+    pub fn ensure_icon_count(&mut self, count: usize) {
+        if let LayoutEngine::Dock(d) = self {
+            d.ensure_icon_count(count);
+        }
+    }
+
+    /// Returns true if the dock layout is currently animating.
+    pub fn is_animating(&self) -> bool {
+        match self {
+            LayoutEngine::Dock(d) => d.state.animating,
+            _ => false,
+        }
+    }
 }
 
 // ── Shared linear layout ──────────────────────────────────────────────────────

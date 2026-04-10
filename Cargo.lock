@@ -935,12 +935,15 @@ dependencies = [
 name = "hyprdeck"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hyprdeck-core",
  "hyprdeck-modules",
  "hyprdeck-themes",
+ "smithay-client-toolkit",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wayland-client",
 ]
 
 [[package]]

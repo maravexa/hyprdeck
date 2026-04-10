@@ -1,10 +1,12 @@
 pub mod action;
+pub mod app;
 pub mod autohide;
 pub mod config;
 pub mod geometry;
 pub mod ipc;
 pub mod layout;
 pub mod module;
+pub mod output;
 pub mod panel;
 pub mod render;
 pub mod theme;
@@ -14,7 +16,8 @@ pub mod theme;
 pub use tiny_skia::Pixmap;
 
 // Flat re-exports of the most commonly used types.
-pub use action::Action;
+pub use action::{Action, ActionError, dispatch_action};
+pub use app::{App, ModuleFactory};
 pub use autohide::{AnimPhase, AutoHideMode, AutoHideState};
 pub use config::{Config, ModuleConfigs, ThemeOverrides};
 pub use geometry::{DisplayGeometry, Edge, Point, Rect, Size};
@@ -30,6 +33,7 @@ pub use module::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
     PanelModule, ThemeContext, UpdateContext,
 };
+pub use output::OutputState;
 pub use panel::{
     Color, ColorPalette, FontConfig, Padding, Panel, ResolvedSeparator, ResolvedStyle,
 };

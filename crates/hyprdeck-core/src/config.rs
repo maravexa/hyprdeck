@@ -35,8 +35,24 @@ pub struct ModuleConfigs {
 
 impl Config {
     /// Load `Config` from the given file path.
+    ///
+    /// If the file does not exist, returns a default config using the
+    /// `"gnome_classic"` theme.
     pub fn load(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
+        let src = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!("No config file at {:?}, using defaults", path);
+                return Ok(Self {
+                    theme: "gnome_classic".to_owned(),
+                    theme_overrides: ThemeOverrides::default(),
+                    modules: ModuleConfigs::default(),
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let config: Self = toml::from_str(&src)?;
+        Ok(config)
     }
 
     /// Return the module config for `id`, if present.

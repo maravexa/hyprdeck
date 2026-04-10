@@ -85,12 +85,29 @@ pub struct ConfigField {
 /// Declares the widget type and constraints for a [`ConfigField`].
 #[derive(Debug)]
 pub enum ConfigFieldType {
-    Text { default: String },
-    Integer { default: i64, min: Option<i64>, max: Option<i64> },
-    Float { default: f64, min: Option<f64>, max: Option<f64> },
-    Boolean { default: bool },
-    Choice { options: Vec<String>, default: String },
-    Color { default: String },
+    Text {
+        default: String,
+    },
+    Integer {
+        default: i64,
+        min: Option<i64>,
+        max: Option<i64>,
+    },
+    Float {
+        default: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+    },
+    Boolean {
+        default: bool,
+    },
+    Choice {
+        options: Vec<String>,
+        default: String,
+    },
+    Color {
+        default: String,
+    },
 }
 
 // ── Core module trait ──────────────────────────────────────────────────────────

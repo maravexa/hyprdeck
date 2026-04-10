@@ -184,9 +184,7 @@ impl Panel {
         if let Some(pt) = point {
             for (module_id, bounds) in &layout.module_bounds {
                 if bounds.contains(pt) {
-                    if let Some(module) =
-                        self.modules.iter_mut().find(|m| m.id() == module_id)
-                    {
+                    if let Some(module) = self.modules.iter_mut().find(|m| m.id() == module_id) {
                         match module.handle_event(&event, *bounds) {
                             EventResult::Action(action) => return Some(action),
                             EventResult::Handled => {
@@ -233,10 +231,7 @@ impl Panel {
 
     /// Returns true if the auto-hide state machine is currently animating.
     pub fn is_auto_hide_animating(&self) -> bool {
-        matches!(
-            self.auto_hide.phase,
-            AnimPhase::Showing | AnimPhase::Hiding
-        )
+        matches!(self.auto_hide.phase, AnimPhase::Showing | AnimPhase::Hiding)
     }
 
     // ── Layout & Render ───────────────────────────────────
@@ -256,7 +251,9 @@ impl Panel {
 
         // Run layout
         let sizes = ModuleSizeAdapter(&self.modules, &self.theme_ctx);
-        let layout = self.layout.layout(&self.groups, &sizes, &self.style, display);
+        let layout = self
+            .layout
+            .layout(&self.groups, &sizes, &self.style, display);
 
         // Check if surface needs resize (dock magnification)
         let needed_width = (layout.total_size.width.ceil() as u32).max(1);
@@ -476,9 +473,19 @@ mod tests {
             false
         }
 
-        fn render(&self, _canvas: &mut Pixmap, _theme: &ThemeContext, _bounds: crate::geometry::Rect) {}
+        fn render(
+            &self,
+            _canvas: &mut Pixmap,
+            _theme: &ThemeContext,
+            _bounds: crate::geometry::Rect,
+        ) {
+        }
 
-        fn handle_event(&mut self, event: &InputEvent, _bounds: crate::geometry::Rect) -> EventResult {
+        fn handle_event(
+            &mut self,
+            event: &InputEvent,
+            _bounds: crate::geometry::Rect,
+        ) -> EventResult {
             match event {
                 InputEvent::MousePress { .. } => EventResult::Handled,
                 _ => EventResult::Ignored,

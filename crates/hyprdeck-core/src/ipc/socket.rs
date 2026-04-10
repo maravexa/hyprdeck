@@ -100,13 +100,12 @@ pub async fn start_event_listener(
 ) -> Result<(broadcast::Sender<HyprEvent>, JoinHandle<()>), IpcError> {
     // Open the initial connection before returning so the caller sees any
     // immediate errors (e.g., socket doesn't exist) synchronously.
-    let initial_stream =
-        UnixStream::connect(&event_socket_path)
-            .await
-            .map_err(|source| IpcError::Connect {
-                path: event_socket_path.clone(),
-                source,
-            })?;
+    let initial_stream = UnixStream::connect(&event_socket_path)
+        .await
+        .map_err(|source| IpcError::Connect {
+            path: event_socket_path.clone(),
+            source,
+        })?;
 
     let (tx, _rx) = broadcast::channel::<HyprEvent>(EVENT_CHANNEL_CAPACITY);
     let tx_task = tx.clone();

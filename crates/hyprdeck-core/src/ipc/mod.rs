@@ -115,12 +115,9 @@ impl HyprIpc {
         let initial_state = command::hydrate_state(&command_path).await?;
         let state = Arc::new(RwLock::new(initial_state));
 
-        let (event_tx, event_task) = socket::start_event_listener(
-            event_path,
-            command_path.clone(),
-            Arc::clone(&state),
-        )
-        .await?;
+        let (event_tx, event_task) =
+            socket::start_event_listener(event_path, command_path.clone(), Arc::clone(&state))
+                .await?;
 
         Ok(HyprIpc {
             state,

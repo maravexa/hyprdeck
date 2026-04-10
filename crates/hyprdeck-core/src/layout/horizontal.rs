@@ -1,7 +1,7 @@
 use crate::geometry::{DisplayGeometry, Rect, Size};
 use crate::panel::ResolvedStyle;
 
-use super::{linear_layout, Axis, LayoutResult, ModuleGroups, ModuleSizeProvider};
+use super::{Axis, LayoutResult, ModuleGroups, ModuleSizeProvider, linear_layout};
 
 /// Three-group horizontal layout: `start | center | end`.
 ///

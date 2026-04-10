@@ -114,8 +114,11 @@ impl PanelModule for ClockModule {
                 ConfigField {
                     key: "format".to_owned(),
                     label: "Time format".to_owned(),
-                    description: "strftime format string, e.g. \"%H:%M\" or \"%I:%M %p\".".to_owned(),
-                    field_type: ConfigFieldType::Text { default: default_format() },
+                    description: "strftime format string, e.g. \"%H:%M\" or \"%I:%M %p\"."
+                        .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: default_format(),
+                    },
                 },
                 ConfigField {
                     key: "secondary_timezone".to_owned(),

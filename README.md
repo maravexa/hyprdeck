@@ -64,6 +64,15 @@ cargo build --release
 install -Dm755 target/release/hyprdeck ~/.local/bin/hyprdeck
 ```
 
+### Installation
+
+```sh
+# AUR (Arch / Arch-based)
+yay -S hyprdeck
+```
+
+For other distributions, build from source as shown above.
+
 ### Configure
 
 Create `~/.config/hyprdeck/config.toml`:
@@ -98,6 +107,24 @@ hyprdeck
 # Or add to hyprland.conf for autostart
 exec-once = hyprdeck
 ```
+
+---
+
+## Built-in Shaders
+
+20 shaders ship out of the box:
+
+bezier, caustics, donut, fire, geometry, hypercube, julia, kaleidoscope, lissajous, mandelbrot, marble, matrix, network, planet, plasma, snowfall, starfield, tesla, tunnel, voronoi
+
+Use `shader = "cycle"` to rotate through all shaders automatically.
+
+### Palettes
+
+Built-in palettes: rainbow, vaporwave (and more). Use `palette = "cycle"` to rotate.
+
+### Performance
+
+See [`docs/BENCHMARK-0.4.0.md`](docs/BENCHMARK-0.4.0.md) for per-shader GPU utilization benchmarks on a GMKtec Nucbox K12 (AMD ATI HawkPoint1), dual 1920×1200 monitors.
 
 ---
 
@@ -143,6 +170,13 @@ HyprDeck is part of a trio of Hyprland-native tools:
 - [ ] Theme hot-reload on file change
 - [ ] Hyprland IPC (event socket + command socket)
 - [ ] HiDPI / fractional scale support
+
+### v0.5.0
+
+- [ ] Wormhole shader (fundamental rewrite from v0.4.0 deferral)
+- [ ] Further heavy shader optimizations (target: bring 70%-tier shaders below 60%)
+- [x] ~~Screencopy pipeline~~ (moved to v0.5.0)
+- [x] ~~Rain-on-Glass shader~~ (moved to v0.5.0)
 
 ### Post-1.0
 

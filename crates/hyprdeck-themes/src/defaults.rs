@@ -1,4 +1,4 @@
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 
 /// The `themes/` directory is embedded at compile time via `include_dir!`.
 ///

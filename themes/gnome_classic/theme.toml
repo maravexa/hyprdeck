@@ -1,0 +1,31 @@
+name        = "Classic GNOME"
+description = "Traditional GNOME 2 layout with top and bottom panels"
+
+[[panels]]
+edge     = "top"
+height   = 28
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["menu_button"]
+modules_center = []
+modules_end    = ["network", "clock", "calendar"]
+
+[[panels]]
+edge     = "bottom"
+height   = 32
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["workspaces"]
+modules_center = ["window_list"]
+modules_end    = []
+
+[style]
+background_color = "#2e3436"
+foreground_color = "#eeeeec"
+accent_color     = "#729fcf"
+urgent_color     = "#cc0000"
+separator_color  = "#555753"
+font_family      = "Cantarell"
+font_size        = 11.0
+border_radius    = 0.0
+opacity          = 1.0

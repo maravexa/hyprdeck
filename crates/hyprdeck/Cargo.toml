@@ -1,0 +1,17 @@
+[package]
+name    = "hyprdeck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "hyprdeck"
+path = "src/main.rs"
+
+[dependencies]
+hyprdeck-core    = { workspace = true }
+hyprdeck-modules = { workspace = true }
+hyprdeck-themes  = { workspace = true }
+tokio            = { workspace = true }
+tracing          = { workspace = true }
+tracing-subscriber = { workspace = true }

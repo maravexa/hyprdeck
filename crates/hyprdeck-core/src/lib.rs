@@ -23,13 +23,15 @@ pub use ipc::{
     Workspace,
 };
 pub use layout::{
-    DockLayout, DockMagnification, HorizontalLayout, LayoutEngine, LayoutResult, ModuleGroups,
-    VerticalLayout,
+    Axis, DockAnimState, DockLayout, DockLayoutConfig, HorizontalLayout, LayoutEngine,
+    LayoutResult, ModuleGroups, ModuleSizeProvider, VerticalLayout,
 };
 pub use module::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
     PanelModule, ThemeContext, UpdateContext,
 };
-pub use panel::{ColorPalette, FontConfig, Padding, Panel, ResolvedStyle};
-pub use render::RenderContext;
+pub use panel::{
+    Color, ColorPalette, FontConfig, Padding, Panel, ResolvedSeparator, ResolvedStyle,
+};
+pub use render::Canvas;
 pub use theme::{DockConfig, LayoutType, PanelDefinition, StyleDefinition, ThemeDefinition};

@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Rect,
@@ -90,7 +90,9 @@ impl PanelModule for ShellModule {
                     key: "command".to_owned(),
                     label: "Command".to_owned(),
                     description: "Shell command to run (executed via `sh -c`).".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    field_type: ConfigFieldType::Text {
+                        default: String::new(),
+                    },
                 },
                 ConfigField {
                     key: "interval_secs".to_owned(),

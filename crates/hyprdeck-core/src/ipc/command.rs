@@ -412,12 +412,11 @@ mod tests {
 
     #[test]
     fn assemble_state_picks_active_workspace_and_focused_window() {
-        let workspaces: Vec<Workspace> =
-            serde_json::from_str::<Vec<RawWorkspace>>(WORKSPACES_JSON)
-                .unwrap()
-                .into_iter()
-                .map(Workspace::from)
-                .collect();
+        let workspaces: Vec<Workspace> = serde_json::from_str::<Vec<RawWorkspace>>(WORKSPACES_JSON)
+            .unwrap()
+            .into_iter()
+            .map(Workspace::from)
+            .collect();
         let windows: Vec<WindowInfo> = serde_json::from_str::<Vec<RawClient>>(CLIENTS_JSON)
             .unwrap()
             .into_iter()

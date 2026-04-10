@@ -57,24 +57,14 @@ impl AutoHideState {
     /// Construct state from an [`AutoHideMode`] with sensible defaults.
     pub fn from_mode(mode: AutoHideMode) -> Self {
         let (hide_delay, show_delay, phase) = match &mode {
-            AutoHideMode::Disabled => (
-                Duration::ZERO,
-                Duration::ZERO,
-                AnimPhase::Visible,
-            ),
+            AutoHideMode::Disabled => (Duration::ZERO, Duration::ZERO, AnimPhase::Visible),
             AutoHideMode::AutoHide { .. } => (
                 Duration::from_millis(500),
                 Duration::ZERO,
                 AnimPhase::Visible,
             ),
-            AutoHideMode::DodgeActive => (
-                Duration::ZERO,
-                Duration::ZERO,
-                AnimPhase::Visible,
-            ),
-            AutoHideMode::DockHover {
-                hide_delay_ms, ..
-            } => (
+            AutoHideMode::DodgeActive => (Duration::ZERO, Duration::ZERO, AnimPhase::Visible),
+            AutoHideMode::DockHover { hide_delay_ms, .. } => (
                 Duration::from_millis(*hide_delay_ms),
                 Duration::ZERO,
                 AnimPhase::Hidden,

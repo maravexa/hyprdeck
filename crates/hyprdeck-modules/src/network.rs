@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Rect,

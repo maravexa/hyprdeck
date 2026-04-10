@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Rect,
@@ -75,8 +75,12 @@ impl PanelModule for LunarModule {
                 ConfigField {
                     key: "locale".to_owned(),
                     label: "Locale".to_owned(),
-                    description: "BCP-47 language tag for phase name localisation (e.g. \"en\", \"zh-TW\").".to_owned(),
-                    field_type: ConfigFieldType::Text { default: "en".to_owned() },
+                    description:
+                        "BCP-47 language tag for phase name localisation (e.g. \"en\", \"zh-TW\")."
+                            .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: "en".to_owned(),
+                    },
                 },
             ],
         }

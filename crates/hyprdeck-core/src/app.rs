@@ -36,11 +36,7 @@ pub struct App {
 
 impl App {
     /// Create a new App from an already-loaded config, theme, and module factory.
-    pub fn new(
-        config: Config,
-        theme: ThemeDefinition,
-        module_factory: ModuleFactory,
-    ) -> Self {
+    pub fn new(config: Config, theme: ThemeDefinition, module_factory: ModuleFactory) -> Self {
         Self {
             config,
             theme,
@@ -145,11 +141,7 @@ impl App {
     }
 
     /// Create a single panel from a theme panel definition.
-    fn create_panel(
-        &self,
-        panel_def: &PanelDefinition,
-        display: &DisplayGeometry,
-    ) -> Panel {
+    fn create_panel(&self, panel_def: &PanelDefinition, display: &DisplayGeometry) -> Panel {
         let style = resolve_style_from_theme(&self.theme, &self.config);
 
         let (surface_width, surface_height) = match panel_def.edge {

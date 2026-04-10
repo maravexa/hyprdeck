@@ -39,15 +39,9 @@ pub enum ActionError {
 }
 
 /// Execute an action. Called by the main loop when a module returns an [`Action`].
-pub async fn dispatch_action(
-    action: &Action,
-    hypr_socket: &Path,
-) -> Result<(), ActionError> {
+pub async fn dispatch_action(action: &Action, hypr_socket: &Path) -> Result<(), ActionError> {
     match action {
-        Action::Exec {
-            command: cmd,
-            args,
-        } => {
+        Action::Exec { command: cmd, args } => {
             tracing::info!("Executing: {} {:?}", cmd, args);
             let result = tokio::process::Command::new(cmd)
                 .args(args)
@@ -74,15 +68,13 @@ pub async fn dispatch_action(
 
         Action::HyprDispatch { dispatch } => {
             tracing::debug!("Hyprland dispatch: {}", dispatch);
-            command::dispatch(hypr_socket, dispatch)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Hyprland dispatch failed: {}", e);
-                    ActionError::HyprDispatchFailed {
-                        dispatch: dispatch.clone(),
-                        detail: e.to_string(),
-                    }
-                })
+            command::dispatch(hypr_socket, dispatch).await.map_err(|e| {
+                tracing::error!("Hyprland dispatch failed: {}", e);
+                ActionError::HyprDispatchFailed {
+                    dispatch: dispatch.clone(),
+                    detail: e.to_string(),
+                }
+            })
         }
 
         Action::ModuleAction { module, action } => {

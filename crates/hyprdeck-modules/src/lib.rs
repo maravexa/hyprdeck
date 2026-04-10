@@ -24,10 +24,7 @@ pub use workspaces::WorkspacesModule;
 ///
 /// Returns `None` if `id` is not recognised.  Each module is responsible for
 /// deserialising its own config section; unrecognised keys are silently ignored.
-pub fn create_module(
-    id: &str,
-    config: toml::Value,
-) -> Option<Box<dyn hyprdeck_core::PanelModule>> {
+pub fn create_module(id: &str, config: toml::Value) -> Option<Box<dyn hyprdeck_core::PanelModule>> {
     match id {
         "calendar" => {
             let cfg = parse_module_config::<calendar::CalendarConfig>(id, config);
@@ -123,11 +120,7 @@ mod tests {
     fn every_known_id_creates_a_module() {
         for id in builtin_module_ids() {
             let module = create_module(id, empty_config());
-            assert!(
-                module.is_some(),
-                "create_module('{}') returned None",
-                id,
-            );
+            assert!(module.is_some(), "create_module('{}') returned None", id,);
             let m = module.expect("just checked");
             assert_eq!(m.id(), *id, "module id() mismatch for '{}'", id);
         }

@@ -2,19 +2,18 @@ use std::time::Duration;
 
 use tracing::{error, info, trace, warn};
 
+use hyprdeck_core::App;
 use hyprdeck_core::ipc::HyprIpc;
 use hyprdeck_core::module::UpdateContext;
-use hyprdeck_core::App;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── 1. Initialize logging ─────────────────────────────
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    tracing_subscriber::EnvFilter::new("hyprdeck=info,hyprdeck_core=info")
-                }),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("hyprdeck=info,hyprdeck_core=info")
+            }),
         )
         .init();
 
@@ -48,11 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
         let state = hypr_state.read().await;
         for monitor in &state.monitors {
-            app.add_output(
-                monitor.name.clone(),
-                monitor.width,
-                monitor.height,
-            );
+            app.add_output(monitor.name.clone(), monitor.width, monitor.height);
         }
     }
 
@@ -82,16 +77,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Some(conn)
         }
         Err(e) => {
-            warn!("Could not connect to Wayland display: {}. Running in headless mode.", e);
+            warn!(
+                "Could not connect to Wayland display: {}. Running in headless mode.",
+                e
+            );
             None
         }
     };
 
     // ── 7. Signal handling ────────────────────────────────
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-    let mut sigint =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
 
     // ── 8. Main event loop ────────────────────────────────
     //

@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Rect,
@@ -74,14 +74,20 @@ impl PanelModule for ClockModule {
                 ConfigField {
                     key: "format".to_owned(),
                     label: "Time format".to_owned(),
-                    description: "strftime format string, e.g. \"%H:%M\" or \"%I:%M %p\".".to_owned(),
-                    field_type: ConfigFieldType::Text { default: default_format() },
+                    description: "strftime format string, e.g. \"%H:%M\" or \"%I:%M %p\"."
+                        .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: default_format(),
+                    },
                 },
                 ConfigField {
                     key: "secondary_timezone".to_owned(),
                     label: "Secondary time zone".to_owned(),
-                    description: "Optional IANA time-zone name shown below the primary clock.".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    description: "Optional IANA time-zone name shown below the primary clock."
+                        .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: String::new(),
+                    },
                 },
             ],
         }

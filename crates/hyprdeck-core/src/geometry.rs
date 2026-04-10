@@ -54,7 +54,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Returns true if the given point falls within this rectangle.
@@ -85,7 +90,12 @@ impl Rect {
         let x_clamped = x.clamp(0.0, self.width);
         (
             Rect::new(self.x, self.y, x_clamped, self.height),
-            Rect::new(self.x + x_clamped, self.y, self.width - x_clamped, self.height),
+            Rect::new(
+                self.x + x_clamped,
+                self.y,
+                self.width - x_clamped,
+                self.height,
+            ),
         )
     }
 
@@ -94,7 +104,12 @@ impl Rect {
         let y_clamped = y.clamp(0.0, self.height);
         (
             Rect::new(self.x, self.y, self.width, y_clamped),
-            Rect::new(self.x, self.y + y_clamped, self.width, self.height - y_clamped),
+            Rect::new(
+                self.x,
+                self.y + y_clamped,
+                self.width,
+                self.height - y_clamped,
+            ),
         )
     }
 

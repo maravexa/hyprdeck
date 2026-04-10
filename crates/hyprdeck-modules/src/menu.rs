@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     Action, ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule,
@@ -54,7 +54,10 @@ pub struct MenuModule {
 
 impl MenuModule {
     pub fn new(config: MenuConfig) -> Self {
-        MenuModule { config, pressed: false }
+        MenuModule {
+            config,
+            pressed: false,
+        }
     }
 }
 

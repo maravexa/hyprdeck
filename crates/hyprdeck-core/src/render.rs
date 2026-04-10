@@ -28,8 +28,7 @@ impl std::fmt::Debug for Canvas {
 impl Canvas {
     /// Create a new canvas with the given pixel dimensions.
     pub fn new(width: u32, height: u32) -> Self {
-        let pixmap = Pixmap::new(width.max(1), height.max(1))
-            .expect("failed to allocate pixmap");
+        let pixmap = Pixmap::new(width.max(1), height.max(1)).expect("failed to allocate pixmap");
         let font_system = cosmic_text::FontSystem::new();
         let swash_cache = cosmic_text::SwashCache::new();
         Self {
@@ -102,29 +101,23 @@ impl Canvas {
         let mut paint = Paint::default();
         paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
         paint.anti_alias = true;
-        self.pixmap
-            .fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        self.pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 
     /// Fill a rounded rectangle with an opacity multiplier.
-    pub fn fill_rounded_rect_alpha(
-        &mut self,
-        rect: Rect,
-        color: Color,
-        radius: f32,
-        opacity: f32,
-    ) {
+    pub fn fill_rounded_rect_alpha(&mut self, rect: Rect, color: Color, radius: f32, opacity: f32) {
         let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
         self.fill_rounded_rect(rect, [color[0], color[1], color[2], a], radius);
     }
 
     /// Draw a vertical gradient rectangle (top_color at top, bottom_color at bottom).
-    pub fn fill_gradient_rect(
-        &mut self,
-        rect: Rect,
-        top_color: Color,
-        bottom_color: Color,
-    ) {
+    pub fn fill_gradient_rect(&mut self, rect: Rect, top_color: Color, bottom_color: Color) {
         let Some(skia_rect) = rect.to_skia() else {
             return;
         };
@@ -168,8 +161,13 @@ impl Canvas {
         let mut paint = Paint::default();
         paint.shader = gradient;
         paint.anti_alias = false;
-        self.pixmap
-            .fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        self.pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 
     /// Draw a line between two points.
@@ -202,8 +200,13 @@ impl Canvas {
         let mut paint = Paint::default();
         paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
         paint.anti_alias = true;
-        self.pixmap
-            .fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        self.pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 
     // ── Image Drawing ──────────────────────────────────────
@@ -214,12 +217,7 @@ impl Canvas {
     }
 
     /// Draw an RGBA image scaled to fit, with an opacity multiplier.
-    pub fn draw_image_alpha(
-        &mut self,
-        image: &image::RgbaImage,
-        dest: Rect,
-        opacity: f32,
-    ) {
+    pub fn draw_image_alpha(&mut self, image: &image::RgbaImage, dest: Rect, opacity: f32) {
         let (w, h) = image.dimensions();
         if w == 0 || h == 0 {
             return;
@@ -299,21 +297,20 @@ impl Canvas {
 
     /// Measure the width of a text string without drawing it.
     /// Used by modules in `desired_size()` calculations.
-    pub fn measure_text(
-        &mut self,
-        text: &str,
-        font_family: &str,
-        font_size: f32,
-    ) -> f32 {
+    pub fn measure_text(&mut self, text: &str, font_family: &str, font_size: f32) -> f32 {
         let line_height = (font_size * 1.2).ceil();
         let metrics = cosmic_text::Metrics::new(font_size, line_height);
         let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
 
         buffer.set_size(&mut self.font_system, Some(f32::MAX), Some(line_height));
 
-        let attrs = cosmic_text::Attrs::new()
-            .family(cosmic_text::Family::Name(font_family));
-        buffer.set_text(&mut self.font_system, text, attrs, cosmic_text::Shaping::Advanced);
+        let attrs = cosmic_text::Attrs::new().family(cosmic_text::Family::Name(font_family));
+        buffer.set_text(
+            &mut self.font_system,
+            text,
+            attrs,
+            cosmic_text::Shaping::Advanced,
+        );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         buffer
@@ -366,11 +363,7 @@ impl Canvas {
     // ── Panel-Level Drawing ────────────────────────────────
 
     /// Draw the panel background (solid color with optional rounded corners).
-    pub fn draw_panel_background(
-        &mut self,
-        bounds: Rect,
-        style: &ResolvedStyle,
-    ) {
+    pub fn draw_panel_background(&mut self, bounds: Rect, style: &ResolvedStyle) {
         let bg = style.colors.background;
         let opacity = style.background_opacity;
         let radius = style.border_radius;
@@ -456,9 +449,13 @@ impl Canvas {
 
         buffer.set_size(&mut self.font_system, Some(rect.width), Some(rect.height));
 
-        let attrs = cosmic_text::Attrs::new()
-            .family(cosmic_text::Family::Name(font_family));
-        buffer.set_text(&mut self.font_system, text, attrs, cosmic_text::Shaping::Advanced);
+        let attrs = cosmic_text::Attrs::new().family(cosmic_text::Family::Name(font_family));
+        buffer.set_text(
+            &mut self.font_system,
+            text,
+            attrs,
+            cosmic_text::Shaping::Advanced,
+        );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         // Measure the text width for alignment and return value.
@@ -485,10 +482,10 @@ impl Canvas {
             for glyph in run.glyphs.iter() {
                 let physical = glyph.physical((x_offset, y_offset), 1.0);
 
-                let Some(image) = self.swash_cache.get_image(
-                    &mut self.font_system,
-                    physical.cache_key,
-                ) else {
+                let Some(image) = self
+                    .swash_cache
+                    .get_image(&mut self.font_system, physical.cache_key)
+                else {
                     continue;
                 };
 
@@ -509,8 +506,7 @@ impl Canvas {
                                 if px < 0 || py < 0 || px >= pixmap_width || py >= pixmap_height {
                                     continue;
                                 }
-                                let alpha =
-                                    image.data[(row * img_w + col) as usize];
+                                let alpha = image.data[(row * img_w + col) as usize];
                                 if alpha == 0 {
                                     continue;
                                 }

@@ -45,10 +45,7 @@ pub enum LayoutEngine {
 
 impl LayoutEngine {
     /// Create the appropriate layout engine from theme config.
-    pub fn from_panel_def(
-        layout_type: &LayoutType,
-        dock_config: Option<&DockConfig>,
-    ) -> Self {
+    pub fn from_panel_def(layout_type: &LayoutType, dock_config: Option<&DockConfig>) -> Self {
         match layout_type {
             LayoutType::Horizontal => LayoutEngine::Horizontal(HorizontalLayout::new()),
             LayoutType::Vertical => LayoutEngine::Vertical(VerticalLayout::new()),

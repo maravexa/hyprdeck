@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use hyprdeck_core::Pixmap;
+use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Rect,
@@ -76,13 +76,15 @@ impl PanelModule for WorkspacesModule {
                 ConfigField {
                     key: "hide_empty".to_owned(),
                     label: "Hide empty workspaces".to_owned(),
-                    description: "Only show workspaces that contain at least one window.".to_owned(),
+                    description: "Only show workspaces that contain at least one window."
+                        .to_owned(),
                     field_type: ConfigFieldType::Boolean { default: false },
                 },
                 ConfigField {
                     key: "highlight_urgent".to_owned(),
                     label: "Highlight urgent".to_owned(),
-                    description: "Use the urgent colour for workspaces with urgent windows.".to_owned(),
+                    description: "Use the urgent colour for workspaces with urgent windows."
+                        .to_owned(),
                     field_type: ConfigFieldType::Boolean { default: true },
                 },
             ],

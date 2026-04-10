@@ -909,8 +909,20 @@ mod tests {
             address: "ccdd".to_owned(),
         });
         assert_eq!(s.active_window.as_ref().unwrap().address, "ccdd");
-        assert!(s.windows.iter().find(|w| w.address == "ccdd").unwrap().is_focused);
-        assert!(!s.windows.iter().find(|w| w.address == "aabb").unwrap().is_focused);
+        assert!(
+            s.windows
+                .iter()
+                .find(|w| w.address == "ccdd")
+                .unwrap()
+                .is_focused
+        );
+        assert!(
+            !s.windows
+                .iter()
+                .find(|w| w.address == "aabb")
+                .unwrap()
+                .is_focused
+        );
     }
 
     #[test]

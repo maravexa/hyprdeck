@@ -1,9 +1,11 @@
 pub mod calendar;
 pub mod clock;
 pub mod favorites;
+pub mod icon_utils;
 pub mod lunar;
 pub mod menu;
 pub mod network;
+pub mod render_utils;
 pub mod shell;
 pub mod weather;
 pub mod window_list;

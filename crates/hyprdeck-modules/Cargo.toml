@@ -14,4 +14,8 @@ fn0rd             = { workspace = true }
 tokio             = { workspace = true }
 tracing           = { workspace = true }
 serde             = { workspace = true }
+serde_json        = { workspace = true }
 toml              = { workspace = true }
+tiny-skia         = { workspace = true }
+cosmic-text       = { workspace = true }
+image             = { workspace = true }

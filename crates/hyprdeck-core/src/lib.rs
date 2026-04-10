@@ -18,7 +18,10 @@ pub use action::Action;
 pub use autohide::{AnimPhase, AutoHideMode, AutoHideState};
 pub use config::{Config, ModuleConfigs, ThemeOverrides};
 pub use geometry::{DisplayGeometry, Edge, Point, Rect, Size};
-pub use ipc::{CommandClient, EventSocket, HyprEvent, HyprState, MonitorInfo, WindowInfo, Workspace};
+pub use ipc::{
+    CommandClient, EventSocket, HyprEvent, HyprIpc, HyprState, IpcError, MonitorInfo, WindowInfo,
+    Workspace,
+};
 pub use layout::{
     DockLayout, DockMagnification, HorizontalLayout, LayoutEngine, LayoutResult, ModuleGroups,
     VerticalLayout,

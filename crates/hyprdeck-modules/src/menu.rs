@@ -73,7 +73,10 @@ impl MenuModule {
         } else {
             let img = icon_utils::load_freedesktop_icon(&config.icon, 24);
             if img.is_none() {
-                tracing::warn!("Menu module: icon '{}' not found in icon theme", config.icon);
+                tracing::warn!(
+                    "Menu module: icon '{}' not found in icon theme",
+                    config.icon
+                );
             }
             img
         };
@@ -146,12 +149,7 @@ impl PanelModule for MenuModule {
 
         // Draw label.
         if !self.config.label.is_empty() {
-            let label_rect = Rect::new(
-                x,
-                bounds.y,
-                bounds.x + bounds.width - x,
-                bounds.height,
-            );
+            let label_rect = Rect::new(x, bounds.y, bounds.x + bounds.width - x, bounds.height);
             render_utils::draw_text(
                 canvas,
                 &self.config.label,
@@ -172,11 +170,17 @@ impl PanelModule for MenuModule {
                 }
                 EventResult::Handled
             }
-            InputEvent::MousePress { button: MouseButton::Left, .. } => {
+            InputEvent::MousePress {
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.pressed = true;
                 EventResult::Handled
             }
-            InputEvent::MouseRelease { button: MouseButton::Left, .. } => {
+            InputEvent::MouseRelease {
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.pressed = false;
                 if self.hovered {
                     return EventResult::Action(self.config.action.clone());
@@ -223,7 +227,10 @@ mod tests {
     fn update_always_returns_false() {
         let mut m = default_module();
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         assert!(!m.update(&ctx));
     }
 
@@ -241,14 +248,24 @@ mod tests {
         let bounds = Rect::new(0.0, 0.0, 48.0, 32.0);
         // Press then release.
         m.handle_event(
-            &InputEvent::MousePress { x: 10.0, y: 10.0, button: MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 10.0,
+                y: 10.0,
+                button: MouseButton::Left,
+            },
             bounds,
         );
         let result = m.handle_event(
-            &InputEvent::MouseRelease { x: 10.0, y: 10.0, button: MouseButton::Left },
+            &InputEvent::MouseRelease {
+                x: 10.0,
+                y: 10.0,
+                button: MouseButton::Left,
+            },
             bounds,
         );
-        assert!(matches!(result, EventResult::Action(Action::Exec { command, .. }) if command == "rofi"));
+        assert!(
+            matches!(result, EventResult::Action(Action::Exec { command, .. }) if command == "rofi")
+        );
     }
 
     #[test]

@@ -107,7 +107,11 @@ impl PanelModule for ShellModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let sample = if self.output.is_empty() { " " } else { &self.output };
+        let sample = if self.output.is_empty() {
+            " "
+        } else {
+            &self.output
+        };
         let w = render_utils::estimate_text_width(sample, theme.fonts.size)
             + theme.padding.left
             + theme.padding.right;
@@ -146,8 +150,7 @@ impl PanelModule for ShellModule {
             let timeout_secs = self.config.timeout_secs;
 
             tokio::spawn(async move {
-                let result =
-                    execute_command(&command, max_chars, timeout_secs).await;
+                let result = execute_command(&command, max_chars, timeout_secs).await;
                 if let Ok(mut g) = shared.lock() {
                     *g = Some(result);
                 }
@@ -250,7 +253,11 @@ async fn execute_command(command: &str, max_chars: usize, timeout_secs: u64) -> 
         Ok(Ok(out)) => {
             if !out.status.success() {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                tracing::debug!("Shell command '{}' exited non-zero: {}", command, stderr.trim());
+                tracing::debug!(
+                    "Shell command '{}' exited non-zero: {}",
+                    command,
+                    stderr.trim()
+                );
                 return "err".to_owned();
             }
             let stdout = String::from_utf8_lossy(&out.stdout);
@@ -262,7 +269,10 @@ async fn execute_command(command: &str, max_chars: usize, timeout_secs: u64) -> 
             "err".to_owned()
         }
         Err(_) => {
-            tracing::warn!("Shell command '{}' timed out after {timeout_secs}s", command);
+            tracing::warn!(
+                "Shell command '{}' timed out after {timeout_secs}s",
+                command
+            );
             "err".to_owned()
         }
     }
@@ -282,8 +292,17 @@ mod tests {
                 urgent: [0; 4],
                 separator: [0; 4],
             },
-            fonts: FontConfig { family: "sans-serif".into(), size: 14.0, bold_family: None },
-            padding: Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 8.0 },
+            fonts: FontConfig {
+                family: "sans-serif".into(),
+                size: 14.0,
+                bold_family: None,
+            },
+            padding: Padding {
+                top: 4.0,
+                right: 8.0,
+                bottom: 4.0,
+                left: 8.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         }
@@ -293,7 +312,10 @@ mod tests {
     fn empty_command_does_not_spawn() {
         let mut m = ShellModule::new(ShellConfig::default());
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         // Should return false without spawning since command is empty.
         let changed = m.update(&ctx);
         assert!(!changed);
@@ -312,7 +334,11 @@ mod tests {
     fn handle_event_always_ignored() {
         let mut m = ShellModule::new(ShellConfig::default());
         let r = m.handle_event(
-            &InputEvent::MousePress { x: 0.0, y: 0.0, button: hyprdeck_core::MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 0.0,
+                y: 0.0,
+                button: hyprdeck_core::MouseButton::Left,
+            },
             Rect::new(0.0, 0.0, 100.0, 32.0),
         );
         assert!(matches!(r, EventResult::Ignored));

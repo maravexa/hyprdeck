@@ -165,8 +165,19 @@ impl PanelModule for NetworkModule {
                     (bounds.x + bounds.width) - label_x,
                     bounds.height,
                 );
-                let label = if self.snapshot.is_wireless { "WiFi" } else { &self.snapshot.interface_name };
-                render_utils::draw_text(canvas, label, label_rect, &theme.fonts.family, theme.fonts.size, active);
+                let label = if self.snapshot.is_wireless {
+                    "WiFi"
+                } else {
+                    &self.snapshot.interface_name
+                };
+                render_utils::draw_text(
+                    canvas,
+                    label,
+                    label_rect,
+                    &theme.fonts.family,
+                    theme.fonts.size,
+                    active,
+                );
             }
             _ => {}
         }
@@ -233,8 +244,7 @@ fn auto_detect_interface() -> Option<String> {
             continue;
         }
         // Prefer wireless
-        let is_wifi =
-            std::path::Path::new(&format!("/sys/class/net/{name}/wireless")).exists();
+        let is_wifi = std::path::Path::new(&format!("/sys/class/net/{name}/wireless")).exists();
         if is_wifi {
             return Some(name);
         }
@@ -251,11 +261,14 @@ fn poll_interface(iface: &str) -> NetworkSnapshot {
         .map(|s| s.trim() == "up")
         .unwrap_or(false);
 
-    let is_wireless =
-        std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
+    let is_wireless = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
 
     let ip_address = get_ip(iface);
-    let signal_dbm = if is_wireless { read_wifi_signal(iface) } else { None };
+    let signal_dbm = if is_wireless {
+        read_wifi_signal(iface)
+    } else {
+        None
+    };
 
     NetworkSnapshot {
         is_connected,
@@ -397,7 +410,10 @@ mod tests {
             ..NetworkConfig::default()
         });
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         // First update polls.
         m.update(&ctx);
         // Second update is too early.

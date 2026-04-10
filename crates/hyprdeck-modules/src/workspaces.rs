@@ -100,8 +100,11 @@ impl PanelModule for WorkspacesModule {
                 }
                 if self.config.hide_empty {
                     // A workspace is occupied if any window lives in it.
-                    let occupied =
-                        ctx.hypr_state.windows.iter().any(|win| win.workspace_id == w.id);
+                    let occupied = ctx
+                        .hypr_state
+                        .windows
+                        .iter()
+                        .any(|win| win.workspace_id == w.id);
                     return occupied || w.id == new_active;
                 }
                 true
@@ -184,7 +187,12 @@ impl PanelModule for WorkspacesModule {
                 size: 14.0,
                 bold_family: None,
             },
-            padding: hyprdeck_core::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 },
+            padding: hyprdeck_core::Padding {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 4.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         });
@@ -222,15 +230,15 @@ impl PanelModule for WorkspacesModule {
                 ConfigField {
                     key: "hide_empty".to_owned(),
                     label: "Hide empty workspaces".to_owned(),
-                    description:
-                        "Only show workspaces that contain at least one window.".to_owned(),
+                    description: "Only show workspaces that contain at least one window."
+                        .to_owned(),
                     field_type: ConfigFieldType::Boolean { default: false },
                 },
                 ConfigField {
                     key: "highlight_urgent".to_owned(),
                     label: "Highlight urgent".to_owned(),
-                    description:
-                        "Use the urgent colour for workspaces with urgent windows.".to_owned(),
+                    description: "Use the urgent colour for workspaces with urgent windows."
+                        .to_owned(),
                     field_type: ConfigFieldType::Boolean { default: true },
                 },
             ],
@@ -256,11 +264,24 @@ mod tests {
     fn update_detects_workspace_change() {
         let mut m = WorkspacesModule::new(WorkspacesConfig::default());
         let ws = vec![
-            Workspace { id: 1, name: "1".into(), monitor: "HDMI-1".into(), has_urgent: false },
-            Workspace { id: 2, name: "2".into(), monitor: "HDMI-1".into(), has_urgent: false },
+            Workspace {
+                id: 1,
+                name: "1".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
+            Workspace {
+                id: 2,
+                name: "2".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
         ];
         let state = state_with(ws.clone(), 1);
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same state should return false");
     }
@@ -269,11 +290,24 @@ mod tests {
     fn update_hides_special_workspaces() {
         let mut m = WorkspacesModule::new(WorkspacesConfig::default());
         let ws = vec![
-            Workspace { id: -1, name: "special".into(), monitor: "HDMI-1".into(), has_urgent: false },
-            Workspace { id: 1, name: "1".into(), monitor: "HDMI-1".into(), has_urgent: false },
+            Workspace {
+                id: -1,
+                name: "special".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
+            Workspace {
+                id: 1,
+                name: "1".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
         ];
         let state = state_with(ws, 1);
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         m.update(&ctx);
         assert_eq!(m.workspaces.len(), 1);
         assert_eq!(m.workspaces[0].id, 1);
@@ -286,8 +320,18 @@ mod tests {
             ..WorkspacesConfig::default()
         });
         let ws = vec![
-            Workspace { id: 1, name: "1".into(), monitor: "HDMI-1".into(), has_urgent: false },
-            Workspace { id: 2, name: "2".into(), monitor: "HDMI-1".into(), has_urgent: false },
+            Workspace {
+                id: 1,
+                name: "1".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
+            Workspace {
+                id: 2,
+                name: "2".into(),
+                monitor: "HDMI-1".into(),
+                has_urgent: false,
+            },
         ];
         // Only workspace 2 has windows; 1 is active but empty.
         let mut state = state_with(ws, 1);
@@ -299,7 +343,10 @@ mod tests {
             is_focused: false,
             is_fullscreen: false,
         }];
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         m.update(&ctx);
         // Workspace 1 should still be present because it is active.
         assert!(m.workspaces.iter().any(|w| w.id == 1));
@@ -309,9 +356,24 @@ mod tests {
     fn slot_at_x_returns_correct_index() {
         let mut m = WorkspacesModule::new(WorkspacesConfig::default());
         m.workspaces = vec![
-            Workspace { id: 1, name: "1".into(), monitor: "".into(), has_urgent: false },
-            Workspace { id: 2, name: "2".into(), monitor: "".into(), has_urgent: false },
-            Workspace { id: 3, name: "3".into(), monitor: "".into(), has_urgent: false },
+            Workspace {
+                id: 1,
+                name: "1".into(),
+                monitor: "".into(),
+                has_urgent: false,
+            },
+            Workspace {
+                id: 2,
+                name: "2".into(),
+                monitor: "".into(),
+                has_urgent: false,
+            },
+            Workspace {
+                id: 3,
+                name: "3".into(),
+                monitor: "".into(),
+                has_urgent: false,
+            },
         ];
         let slot = 24.0_f32;
         let gap = WorkspacesModule::gap();
@@ -331,23 +393,45 @@ mod tests {
     #[test]
     fn left_click_returns_dispatch_action() {
         let mut m = WorkspacesModule::new(WorkspacesConfig::default());
-        m.workspaces = vec![
-            Workspace { id: 3, name: "3".into(), monitor: "".into(), has_urgent: false },
-        ];
+        m.workspaces = vec![Workspace {
+            id: 3,
+            name: "3".into(),
+            monitor: "".into(),
+            has_urgent: false,
+        }];
         let slot = WorkspacesModule::slot_size(&ThemeContext {
             colors: hyprdeck_core::ColorPalette {
-                background: [0; 4], foreground: [255; 4], accent: [0; 4], urgent: [0; 4], separator: [0; 4],
+                background: [0; 4],
+                foreground: [255; 4],
+                accent: [0; 4],
+                urgent: [0; 4],
+                separator: [0; 4],
             },
-            fonts: hyprdeck_core::FontConfig { family: String::new(), size: 14.0, bold_family: None },
-            padding: hyprdeck_core::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 },
+            fonts: hyprdeck_core::FontConfig {
+                family: String::new(),
+                size: 14.0,
+                bold_family: None,
+            },
+            padding: hyprdeck_core::Padding {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 4.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         });
         let bounds = Rect::new(0.0, 0.0, 200.0, slot);
         let result = m.handle_event(
-            &InputEvent::MousePress { x: slot / 2.0, y: slot / 2.0, button: MouseButton::Left },
+            &InputEvent::MousePress {
+                x: slot / 2.0,
+                y: slot / 2.0,
+                button: MouseButton::Left,
+            },
             bounds,
         );
-        assert!(matches!(result, EventResult::Action(Action::HyprDispatch { dispatch }) if dispatch == "workspace 3"));
+        assert!(
+            matches!(result, EventResult::Action(Action::HyprDispatch { dispatch }) if dispatch == "workspace 3")
+        );
     }
 }

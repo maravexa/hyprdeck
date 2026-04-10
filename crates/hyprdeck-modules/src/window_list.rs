@@ -133,7 +133,11 @@ impl PanelModule for WindowListModule {
             .collect();
 
         // Check if anything changed.
-        let old_addrs: Vec<&str> = self.buttons.iter().map(|b| b.info.address.as_str()).collect();
+        let old_addrs: Vec<&str> = self
+            .buttons
+            .iter()
+            .map(|b| b.info.address.as_str())
+            .collect();
         let new_addrs: Vec<&str> = new_windows.iter().map(|w| w.address.as_str()).collect();
         let titles_changed = new_windows
             .iter()
@@ -197,7 +201,10 @@ impl PanelModule for WindowListModule {
             let icon_size = bounds.height - theme.padding.top - theme.padding.bottom;
             let mut content_x = bx + theme.padding.left;
 
-            if matches!(self.config.style, WindowListStyle::Icons | WindowListStyle::IconLabel) {
+            if matches!(
+                self.config.style,
+                WindowListStyle::Icons | WindowListStyle::IconLabel
+            ) {
                 if let Some(icon) = &btn.icon {
                     let icon_rect = Rect::new(
                         content_x,
@@ -325,7 +332,10 @@ mod tests {
         let mut state = HyprState::default();
         state.active_workspace = 1;
         state.windows = vec![win(1, "0x1", "Firefox", "firefox", true)];
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same state should return false");
     }
@@ -342,7 +352,10 @@ mod tests {
             win(1, "0x1", "A", "app", false),
             win(2, "0x2", "B", "app2", false),
         ];
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         m.update(&ctx);
         assert_eq!(m.buttons.len(), 1);
         assert_eq!(m.buttons[0].info.address, "0x1");
@@ -387,12 +400,19 @@ mod tests {
         let mut state = HyprState::default();
         state.active_workspace = 1;
         state.windows = vec![win(1, "0xABCD", "Firefox", "firefox", true)];
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         m.update(&ctx);
 
         let bounds = Rect::new(0.0, 0.0, 600.0, 32.0);
         let result = m.handle_event(
-            &InputEvent::MousePress { x: 50.0, y: 10.0, button: MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 50.0,
+                y: 10.0,
+                button: MouseButton::Left,
+            },
             bounds,
         );
         assert!(

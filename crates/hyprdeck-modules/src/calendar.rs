@@ -114,9 +114,20 @@ fn to_discordian(date: NaiveDate) -> String {
     // 73-day season arithmetic stays correct.
     let doy = if leap && doy > 60 { doy - 1 } else { doy };
 
-    const SEASONS: [&str; 5] = ["Chaos", "Discord", "Confusion", "Bureaucracy", "The Aftermath"];
-    const DAYS: [&str; 5] =
-        ["Sweetmorn", "Boomtime", "Pungenday", "Prickle-Prickle", "Setting Orange"];
+    const SEASONS: [&str; 5] = [
+        "Chaos",
+        "Discord",
+        "Confusion",
+        "Bureaucracy",
+        "The Aftermath",
+    ];
+    const DAYS: [&str; 5] = [
+        "Sweetmorn",
+        "Boomtime",
+        "Pungenday",
+        "Prickle-Prickle",
+        "Setting Orange",
+    ];
 
     let idx = doy - 1; // 0-based
     let season = SEASONS[(idx / 73) as usize];
@@ -196,9 +207,10 @@ impl PanelModule for CalendarModule {
                 ConfigField {
                     key: "date_format".to_owned(),
                     label: "Date format".to_owned(),
-                    description:
-                        "Optional strftime format string for the date display.".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    description: "Optional strftime format string for the date display.".to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: String::new(),
+                    },
                 },
                 ConfigField {
                     key: "show_week_numbers".to_owned(),
@@ -268,9 +280,7 @@ mod tests {
         // Should have the same Discordian day as a non-leap year Mar 1.
         let s_non_leap = to_discordian(date(2023, 3, 1));
         // The YOLD will differ (+1 for 2024 vs 2023), but season/weekday should match.
-        let remove_yold = |s: &str| -> String {
-            s.split(", YOLD").next().unwrap_or("").to_owned()
-        };
+        let remove_yold = |s: &str| -> String { s.split(", YOLD").next().unwrap_or("").to_owned() };
         assert_eq!(remove_yold(&s), remove_yold(&s_non_leap));
     }
 
@@ -282,8 +292,14 @@ mod tests {
         let state = hyprdeck_core::HyprState::default();
         let t1 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 1, 0, 0, 0).unwrap();
         let t2 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 2, 0, 0, 0).unwrap();
-        let ctx1 = UpdateContext { now: t1, hypr_state: &state };
-        let ctx2 = UpdateContext { now: t2, hypr_state: &state };
+        let ctx1 = UpdateContext {
+            now: t1,
+            hypr_state: &state,
+        };
+        let ctx2 = UpdateContext {
+            now: t2,
+            hypr_state: &state,
+        };
         assert!(m.update(&ctx1), "first update should return true");
         assert!(!m.update(&ctx1), "same day should return false");
         assert!(m.update(&ctx2), "next day should return true");
@@ -293,7 +309,11 @@ mod tests {
     fn handle_event_ignored() {
         let mut m = CalendarModule::new(CalendarConfig::default());
         let r = m.handle_event(
-            &InputEvent::MousePress { x: 0.0, y: 0.0, button: hyprdeck_core::MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 0.0,
+                y: 0.0,
+                button: hyprdeck_core::MouseButton::Left,
+            },
             Rect::new(0.0, 0.0, 100.0, 32.0),
         );
         assert!(matches!(r, EventResult::Ignored));

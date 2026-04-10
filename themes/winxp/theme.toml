@@ -1,0 +1,22 @@
+name        = "Windows XP"
+description = "Classic Windows XP taskbar with chunky buttons and teal start button"
+
+[[panels]]
+edge     = "bottom"
+height   = 30
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["menu_button", "favorites"]
+modules_center = ["window_list"]
+modules_end    = ["network", "clock"]
+
+[style]
+background_color = "#245edb"
+foreground_color = "#ffffff"
+accent_color     = "#3d8b37"
+urgent_color     = "#ff8c00"
+separator_color  = "#1a4ab0"
+font_family      = "Tahoma"
+font_size        = 11.0
+border_radius    = 2.0
+opacity          = 1.0

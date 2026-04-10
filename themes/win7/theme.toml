@@ -1,0 +1,22 @@
+name        = "Windows 7"
+description = "Classic Windows 7 taskbar with translucent Aero glass effect"
+
+[[panels]]
+edge     = "bottom"
+height   = 40
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["menu_button", "favorites"]
+modules_center = ["window_list"]
+modules_end    = ["network", "clock", "calendar"]
+
+[style]
+background_color = "#1a2a3a"
+foreground_color = "#ffffff"
+accent_color     = "#3d7ab5"
+urgent_color     = "#ff4444"
+separator_color  = "#4a6a8a"
+font_family      = "Segoe UI"
+font_size        = 12.0
+border_radius    = 3.0
+opacity          = 0.85

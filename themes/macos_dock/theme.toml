@@ -1,0 +1,30 @@
+name        = "macOS Dock"
+description = "Floating dock with icon magnification, inspired by macOS"
+
+[[panels]]
+edge     = "bottom"
+layout   = "dock"
+auto_hide = { mode = "dock_hover", hover_margin = 20, hide_delay_ms = 800 }
+modules_start  = []
+modules_center = ["favorites", "window_list"]
+modules_end    = []
+
+[panels.dock]
+icon_base_size       = 48.0
+icon_max_scale       = 1.8
+magnification_radius = 150.0
+animation_speed      = 8.0
+padding              = 8.0
+background_radius    = 16.0
+background_opacity   = 0.6
+
+[style]
+background_color = "#1e1e1eff"
+foreground_color = "#f0f0f0"
+accent_color     = "#0a84ff"
+urgent_color     = "#ff453a"
+separator_color  = "#3a3a3a"
+font_family      = "SF Pro Text"
+font_size        = 11.0
+border_radius    = 16.0
+opacity          = 0.75

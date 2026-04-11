@@ -51,7 +51,7 @@ pub fn load_theme(name: &str) -> Result<ThemeDefinition, ThemeLoadError> {
 fn user_theme_path(name: &str) -> Option<std::path::PathBuf> {
     let config_dir = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
-        .or_else(|| dirs_path())?;
+        .or_else(dirs_path)?;
     Some(
         config_dir
             .join("hyprdeck")

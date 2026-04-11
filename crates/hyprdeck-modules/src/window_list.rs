@@ -329,9 +329,11 @@ mod tests {
     #[test]
     fn update_detects_new_windows() {
         let mut m = WindowListModule::new(WindowListConfig::default());
-        let mut state = HyprState::default();
-        state.active_workspace = 1;
-        state.windows = vec![win(1, "0x1", "Firefox", "firefox", true)];
+        let state = HyprState {
+            active_workspace: 1,
+            windows: vec![win(1, "0x1", "Firefox", "firefox", true)],
+            ..Default::default()
+        };
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
@@ -346,12 +348,14 @@ mod tests {
             current_workspace_only: true,
             ..WindowListConfig::default()
         });
-        let mut state = HyprState::default();
-        state.active_workspace = 1;
-        state.windows = vec![
-            win(1, "0x1", "A", "app", false),
-            win(2, "0x2", "B", "app2", false),
-        ];
+        let state = HyprState {
+            active_workspace: 1,
+            windows: vec![
+                win(1, "0x1", "A", "app", false),
+                win(2, "0x2", "B", "app2", false),
+            ],
+            ..Default::default()
+        };
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
@@ -374,7 +378,7 @@ mod tests {
 
     #[test]
     fn button_width_clamped_to_min() {
-        let m = WindowListModule::new(WindowListConfig {
+        let _m = WindowListModule::new(WindowListConfig {
             max_button_width: 200.0,
             min_button_width: 60.0,
             ..WindowListConfig::default()
@@ -397,9 +401,11 @@ mod tests {
             min_button_width: 60.0,
             ..WindowListConfig::default()
         });
-        let mut state = HyprState::default();
-        state.active_workspace = 1;
-        state.windows = vec![win(1, "0xABCD", "Firefox", "firefox", true)];
+        let state = HyprState {
+            active_workspace: 1,
+            windows: vec![win(1, "0xABCD", "Firefox", "firefox", true)],
+            ..Default::default()
+        };
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,

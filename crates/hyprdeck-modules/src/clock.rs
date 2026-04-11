@@ -168,12 +168,6 @@ mod tests {
         }
     }
 
-    fn ctx(now: chrono::DateTime<chrono::Local>) -> (HyprState, UpdateContext<'static>) {
-        // UpdateContext borrows HyprState; we test desired_size/update separately.
-        let _ = now;
-        unreachable!("helper not called directly")
-    }
-
     #[test]
     fn default_format_is_hhmm() {
         assert_eq!(default_format(), "%H:%M");

@@ -64,7 +64,7 @@ impl WorkspacesModule {
     }
 
     /// Return the workspace at horizontal position `x` within `bounds`, if any.
-    fn slot_at_x<'a>(&'a self, x: f32, bounds: Rect, slot: f32) -> Option<&'a Workspace> {
+    fn slot_at_x(&self, x: f32, bounds: Rect, slot: f32) -> Option<&Workspace> {
         let gap = Self::gap();
         for (i, ws) in self.workspaces.iter().enumerate() {
             let sx = bounds.x + i as f32 * (slot + gap);

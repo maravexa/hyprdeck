@@ -134,7 +134,10 @@ pub fn draw_image(pixmap: &mut Pixmap, image: &image::RgbaImage, dest: Rect, opa
     }
     let sx = dest.width / w as f32;
     let sy = dest.height / h as f32;
-    let paint = PixmapPaint { opacity: opacity.clamp(0.0, 1.0), ..Default::default() };
+    let paint = PixmapPaint {
+        opacity: opacity.clamp(0.0, 1.0),
+        ..Default::default()
+    };
     pixmap.draw_pixmap(
         dest.x as i32,
         dest.y as i32,

@@ -21,7 +21,7 @@ hyprdeck-themes  = { path = "crates/hyprdeck-themes" }
 smithay-client-toolkit = "0.20"
 wayland-client         = "0.31"
 
-tiny-skia    = "0.11"
+tiny-skia    = "0.12"
 cosmic-text  = "0.12"
 image        = { version = "0.25", default-features = false, features = ["png", "ico"] }
 

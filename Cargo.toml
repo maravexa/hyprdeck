@@ -41,3 +41,6 @@ nix       = { version = "0.31", features = ["net", "socket"] }
 freedesktop-icons = "0.2"
 include_dir       = "0.7"
 fn0rd             = "0.1"
+
+[patch.crates-io]
+fn0rd = { path = "vendor/fn0rd" }

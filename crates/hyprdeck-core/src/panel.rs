@@ -439,10 +439,8 @@ impl ColorPalette {
 mod tests {
     use super::*;
     use crate::autohide::AutoHideMode;
-    use crate::layout::{HorizontalLayout, LayoutEngine, LayoutResult, ModuleGroups};
-    use crate::module::{
-        ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
-    };
+    use crate::layout::{HorizontalLayout, LayoutEngine, ModuleGroups};
+    use crate::module::{EventResult, InputEvent, ModuleConfigSchema, MouseButton};
     use tiny_skia::Pixmap;
 
     /// Minimal test module for unit tests.

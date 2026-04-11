@@ -158,9 +158,11 @@ impl Canvas {
             return;
         };
 
-        let mut paint = Paint::default();
-        paint.shader = gradient;
-        paint.anti_alias = false;
+        let paint = Paint {
+            shader: gradient,
+            anti_alias: false,
+            ..Paint::default()
+        };
         self.pixmap.fill_path(
             &path,
             &paint,
@@ -230,8 +232,10 @@ impl Canvas {
         let scale_y = dest.height / h as f32;
         let transform = Transform::from_scale(scale_x, scale_y);
 
-        let mut paint = PixmapPaint::default();
-        paint.opacity = opacity.clamp(0.0, 1.0);
+        let paint = PixmapPaint {
+            opacity: opacity.clamp(0.0, 1.0),
+            ..PixmapPaint::default()
+        };
 
         self.pixmap.draw_pixmap(
             dest.x as i32,
@@ -346,7 +350,7 @@ impl Canvas {
         let mut lo = 0usize;
         let mut hi = chars.len();
         while lo < hi {
-            let mid = (lo + hi + 1) / 2;
+            let mid = (lo + hi).div_ceil(2);
             let prefix: String = chars[..mid].iter().collect();
             let w = self.measure_text(&prefix, font_family, font_size);
             if w <= available {
@@ -625,7 +629,7 @@ fn rounded_rect_path(rect: &Rect, radius: f32) -> Option<tiny_skia::Path> {
 /// Build a circle path using cubic Bézier approximation.
 fn circle_path(center: Point, radius: f32) -> Option<tiny_skia::Path> {
     // Kappa: control point distance for cubic Bézier quarter-circle approximation.
-    const KAPPA: f32 = 0.5522847498;
+    const KAPPA: f32 = 0.552_284_8;
     let r = radius;
     let k = r * KAPPA;
     let cx = center.x;

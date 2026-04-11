@@ -10,7 +10,7 @@
 use chrono::NaiveDate;
 use serde::Deserialize;
 
-use fn0rd_lib::moon::calc::{phase_angle, phase_name_for_angle, Body};
+use fn0rd_lib::moon::calc::{Body, phase_angle, phase_name_for_angle};
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
@@ -97,8 +97,7 @@ impl PanelModule for LunarModule {
         // One emoji glyph (square) plus optional label.
         let icon_w = theme.fonts.size + theme.padding.left + theme.padding.right;
         let label_w = if self.config.show_label && !self.cached_name.is_empty() {
-            render_utils::estimate_text_width(&self.cached_name, theme.fonts.size)
-                + 4.0 // gap
+            render_utils::estimate_text_width(&self.cached_name, theme.fonts.size) + 4.0 // gap
         } else {
             0.0
         };
@@ -116,8 +115,7 @@ impl PanelModule for LunarModule {
         let new_phase = phase_angle(body, today);
         let new_name = phase_name_for_angle(new_phase).label().to_owned();
 
-        let changed = (new_phase - self.cached_phase).abs() > 1e-9
-            || new_name != self.cached_name;
+        let changed = (new_phase - self.cached_phase).abs() > 1e-9 || new_name != self.cached_name;
         self.cached_phase = new_phase;
         self.cached_name = new_name;
         changed
@@ -126,7 +124,12 @@ impl PanelModule for LunarModule {
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let emoji = moon_emoji(self.cached_phase);
         let icon_size = theme.fonts.size;
-        let icon_rect = Rect::new(bounds.x, bounds.y, icon_size + theme.padding.left + theme.padding.right, bounds.height);
+        let icon_rect = Rect::new(
+            bounds.x,
+            bounds.y,
+            icon_size + theme.padding.left + theme.padding.right,
+            bounds.height,
+        );
 
         render_utils::draw_text_centered(
             canvas,
@@ -139,7 +142,12 @@ impl PanelModule for LunarModule {
 
         if self.config.show_label && !self.cached_name.is_empty() {
             let label_x = icon_rect.x + icon_rect.width + 4.0;
-            let label_rect = Rect::new(label_x, bounds.y, bounds.width - label_x + bounds.x, bounds.height);
+            let label_rect = Rect::new(
+                label_x,
+                bounds.y,
+                bounds.width - label_x + bounds.x,
+                bounds.height,
+            );
             render_utils::draw_text(
                 canvas,
                 &self.cached_name,
@@ -209,7 +217,10 @@ mod tests {
     fn luna_known_full_moon() {
         // Jan 20, 2000 ≈ full moon.
         let phase = phase_angle(Body::Luna, date(2000, 1, 20));
-        assert!((0.47..=0.53).contains(&phase), "expected full moon, got {phase}");
+        assert!(
+            (0.47..=0.53).contains(&phase),
+            "expected full moon, got {phase}"
+        );
     }
 
     #[test]
@@ -235,8 +246,13 @@ mod tests {
     fn update_skips_same_day() {
         let mut m = LunarModule::new(LunarConfig::default());
         let state = hyprdeck_core::HyprState::default();
-        let t = chrono::Local.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
-        let ctx = UpdateContext { now: t, hypr_state: &state };
+        let t = chrono::Local
+            .with_ymd_and_hms(2024, 1, 1, 12, 0, 0)
+            .unwrap();
+        let ctx = UpdateContext {
+            now: t,
+            hypr_state: &state,
+        };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same day should return false");
     }

@@ -156,19 +156,27 @@ impl PanelModule for NetworkModule {
         }
 
         // Optional label.
-        match self.config.display {
-            NetworkDisplay::IconLabel => {
-                let label_x = icon_rect.x + icon_rect.width + 4.0;
-                let label_rect = Rect::new(
-                    label_x,
-                    bounds.y,
-                    (bounds.x + bounds.width) - label_x,
-                    bounds.height,
-                );
-                let label = if self.snapshot.is_wireless { "WiFi" } else { &self.snapshot.interface_name };
-                render_utils::draw_text(canvas, label, label_rect, &theme.fonts.family, theme.fonts.size, active);
-            }
-            _ => {}
+        if let NetworkDisplay::IconLabel = self.config.display {
+            let label_x = icon_rect.x + icon_rect.width + 4.0;
+            let label_rect = Rect::new(
+                label_x,
+                bounds.y,
+                (bounds.x + bounds.width) - label_x,
+                bounds.height,
+            );
+            let label = if self.snapshot.is_wireless {
+                "WiFi"
+            } else {
+                &self.snapshot.interface_name
+            };
+            render_utils::draw_text(
+                canvas,
+                label,
+                label_rect,
+                &theme.fonts.family,
+                theme.fonts.size,
+                active,
+            );
         }
     }
 
@@ -233,8 +241,7 @@ fn auto_detect_interface() -> Option<String> {
             continue;
         }
         // Prefer wireless
-        let is_wifi =
-            std::path::Path::new(&format!("/sys/class/net/{name}/wireless")).exists();
+        let is_wifi = std::path::Path::new(&format!("/sys/class/net/{name}/wireless")).exists();
         if is_wifi {
             return Some(name);
         }
@@ -251,11 +258,14 @@ fn poll_interface(iface: &str) -> NetworkSnapshot {
         .map(|s| s.trim() == "up")
         .unwrap_or(false);
 
-    let is_wireless =
-        std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
+    let is_wireless = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
 
     let ip_address = get_ip(iface);
-    let signal_dbm = if is_wireless { read_wifi_signal(iface) } else { None };
+    let signal_dbm = if is_wireless {
+        read_wifi_signal(iface)
+    } else {
+        None
+    };
 
     NetworkSnapshot {
         is_connected,
@@ -303,7 +313,7 @@ fn read_wifi_signal(iface: &str) -> Option<i32> {
             continue;
         }
         // Strip interface name and colon, then split on whitespace.
-        let rest = line.splitn(2, ':').nth(1)?;
+        let rest = line.split_once(':')?.1;
         let fields: Vec<&str> = rest.split_whitespace().collect();
         // Field index 2 = signal level.
         if fields.len() < 3 {
@@ -397,7 +407,10 @@ mod tests {
             ..NetworkConfig::default()
         });
         let state = HyprState::default();
-        let ctx = UpdateContext { now: chrono::Local::now(), hypr_state: &state };
+        let ctx = UpdateContext {
+            now: chrono::Local::now(),
+            hypr_state: &state,
+        };
         // First update polls.
         m.update(&ctx);
         // Second update is too early.

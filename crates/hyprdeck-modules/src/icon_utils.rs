@@ -19,7 +19,10 @@ pub fn load_freedesktop_icon(name: &str, size: u16) -> Option<image::RgbaImage> 
 /// Only PNG and ICO are supported.  SVG files are skipped without error.
 pub fn load_icon_from_path(path: &Path) -> Option<image::RgbaImage> {
     if path.extension().and_then(|e| e.to_str()) == Some("svg") {
-        tracing::debug!("Skipping SVG icon at {:?} (not supported in this build)", path);
+        tracing::debug!(
+            "Skipping SVG icon at {:?} (not supported in this build)",
+            path
+        );
         return None;
     }
     match image::open(path) {

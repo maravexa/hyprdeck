@@ -153,6 +153,7 @@ fn group_main_extent(
 
 /// Place a group of modules along the main axis, starting at `cursor`.
 /// Returns the new cursor position after the last module.
+#[allow(clippy::too_many_arguments)]
 fn place_group(
     group: &[String],
     sizes: &dyn ModuleSizeProvider,

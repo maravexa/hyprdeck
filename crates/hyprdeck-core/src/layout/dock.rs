@@ -203,16 +203,16 @@ impl DockLayout {
                 let mut scales = self.state.current_scales.clone();
                 for _iteration in 0..3 {
                     let mut cursor_x = 0.0f32; // relative to dock left edge (after padding)
-                    for i in 0..all_count {
+                    for (i, scale) in scales.iter_mut().enumerate().take(all_count) {
                         if i > 0 {
                             cursor_x += gap;
                         }
-                        let scaled = base * scales[i];
+                        let scaled = base * *scale;
                         let icon_center = cursor_x + scaled / 2.0;
                         // pos.x is relative to the dock; we approximate by using the
                         // icon center in dock-local coordinates.
                         let cursor_local = pos.x - pad;
-                        scales[i] = self.compute_icon_scale(icon_center, cursor_local);
+                        *scale = self.compute_icon_scale(icon_center, cursor_local);
                         cursor_x += scaled;
                     }
                 }

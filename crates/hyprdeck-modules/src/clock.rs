@@ -74,7 +74,11 @@ impl PanelModule for ClockModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let sample = if self.width_sample.is_empty() { "00:00" } else { &self.width_sample };
+        let sample = if self.width_sample.is_empty() {
+            "00:00"
+        } else {
+            &self.width_sample
+        };
         let w = render_utils::estimate_text_width(sample, theme.fonts.size)
             + theme.padding.left
             + theme.padding.right;
@@ -123,9 +127,11 @@ impl PanelModule for ClockModule {
                 ConfigField {
                     key: "secondary_timezone".to_owned(),
                     label: "Secondary time zone".to_owned(),
-                    description:
-                        "Optional IANA time-zone name shown below the primary clock.".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    description: "Optional IANA time-zone name shown below the primary clock."
+                        .to_owned(),
+                    field_type: ConfigFieldType::Text {
+                        default: String::new(),
+                    },
                 },
             ],
         }
@@ -146,8 +152,17 @@ mod tests {
                 urgent: [255, 80, 80, 255],
                 separator: [128, 128, 128, 128],
             },
-            fonts: FontConfig { family: "sans-serif".into(), size: 14.0, bold_family: None },
-            padding: Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 8.0 },
+            fonts: FontConfig {
+                family: "sans-serif".into(),
+                size: 14.0,
+                bold_family: None,
+            },
+            padding: Padding {
+                top: 4.0,
+                right: 8.0,
+                bottom: 4.0,
+                left: 8.0,
+            },
             border_radius: 4.0,
             opacity: 1.0,
         }
@@ -174,7 +189,10 @@ mod tests {
 
     #[test]
     fn update_returns_true_when_text_changes() {
-        let mut m = ClockModule::new(ClockConfig { format: "%S".to_owned(), secondary_timezone: None });
+        let mut m = ClockModule::new(ClockConfig {
+            format: "%S".to_owned(),
+            secondary_timezone: None,
+        });
         let state = HyprState::default();
         let ctx1 = UpdateContext {
             now: chrono::Local.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap(),
@@ -189,10 +207,20 @@ mod tests {
     fn update_returns_false_when_minute_unchanged_without_seconds() {
         let mut m = ClockModule::new(ClockConfig::default()); // "%H:%M"
         let state = HyprState::default();
-        let t1 = chrono::Local.with_ymd_and_hms(2000, 1, 1, 12, 30, 0).unwrap();
-        let t2 = chrono::Local.with_ymd_and_hms(2000, 1, 1, 12, 30, 45).unwrap();
-        let ctx1 = UpdateContext { now: t1, hypr_state: &state };
-        let ctx2 = UpdateContext { now: t2, hypr_state: &state };
+        let t1 = chrono::Local
+            .with_ymd_and_hms(2000, 1, 1, 12, 30, 0)
+            .unwrap();
+        let t2 = chrono::Local
+            .with_ymd_and_hms(2000, 1, 1, 12, 30, 45)
+            .unwrap();
+        let ctx1 = UpdateContext {
+            now: t1,
+            hypr_state: &state,
+        };
+        let ctx2 = UpdateContext {
+            now: t2,
+            hypr_state: &state,
+        };
         assert!(m.update(&ctx1));
         assert!(!m.update(&ctx2), "same H:M should not trigger redraw");
     }
@@ -201,7 +229,11 @@ mod tests {
     fn handle_event_always_ignored() {
         let mut m = ClockModule::new(ClockConfig::default());
         let result = m.handle_event(
-            &InputEvent::MousePress { x: 0.0, y: 0.0, button: hyprdeck_core::MouseButton::Left },
+            &InputEvent::MousePress {
+                x: 0.0,
+                y: 0.0,
+                button: hyprdeck_core::MouseButton::Left,
+            },
             Rect::new(0.0, 0.0, 100.0, 32.0),
         );
         assert!(matches!(result, EventResult::Ignored));

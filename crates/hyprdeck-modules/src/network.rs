@@ -156,30 +156,27 @@ impl PanelModule for NetworkModule {
         }
 
         // Optional label.
-        match self.config.display {
-            NetworkDisplay::IconLabel => {
-                let label_x = icon_rect.x + icon_rect.width + 4.0;
-                let label_rect = Rect::new(
-                    label_x,
-                    bounds.y,
-                    (bounds.x + bounds.width) - label_x,
-                    bounds.height,
-                );
-                let label = if self.snapshot.is_wireless {
-                    "WiFi"
-                } else {
-                    &self.snapshot.interface_name
-                };
-                render_utils::draw_text(
-                    canvas,
-                    label,
-                    label_rect,
-                    &theme.fonts.family,
-                    theme.fonts.size,
-                    active,
-                );
-            }
-            _ => {}
+        if let NetworkDisplay::IconLabel = self.config.display {
+            let label_x = icon_rect.x + icon_rect.width + 4.0;
+            let label_rect = Rect::new(
+                label_x,
+                bounds.y,
+                (bounds.x + bounds.width) - label_x,
+                bounds.height,
+            );
+            let label = if self.snapshot.is_wireless {
+                "WiFi"
+            } else {
+                &self.snapshot.interface_name
+            };
+            render_utils::draw_text(
+                canvas,
+                label,
+                label_rect,
+                &theme.fonts.family,
+                theme.fonts.size,
+                active,
+            );
         }
     }
 
@@ -316,7 +313,7 @@ fn read_wifi_signal(iface: &str) -> Option<i32> {
             continue;
         }
         // Strip interface name and colon, then split on whitespace.
-        let rest = line.splitn(2, ':').nth(1)?;
+        let rest = line.split_once(':')?.1;
         let fields: Vec<&str> = rest.split_whitespace().collect();
         // Field index 2 = signal level.
         if fields.len() < 3 {

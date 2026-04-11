@@ -134,8 +134,7 @@ pub fn draw_image(pixmap: &mut Pixmap, image: &image::RgbaImage, dest: Rect, opa
     }
     let sx = dest.width / w as f32;
     let sy = dest.height / h as f32;
-    let mut paint = PixmapPaint::default();
-    paint.opacity = opacity.clamp(0.0, 1.0);
+    let paint = PixmapPaint { opacity: opacity.clamp(0.0, 1.0), ..Default::default() };
     pixmap.draw_pixmap(
         dest.x as i32,
         dest.y as i32,
@@ -244,6 +243,7 @@ where
     FONT_SYSTEM.with(|fs| SWASH_CACHE.with(|sc| f(&mut fs.borrow_mut(), &mut sc.borrow_mut())))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_text_impl(
     pixmap: &mut Pixmap,
     text: &str,
@@ -402,7 +402,7 @@ fn rounded_rect_path(rect: &Rect, radius: f32) -> Option<tiny_skia::Path> {
 }
 
 fn circle_path(center: Point, radius: f32) -> Option<tiny_skia::Path> {
-    const K: f32 = 0.552_284_75; // Bézier approximation of a quarter-circle
+    const K: f32 = 0.552_284_8; // Bézier approximation of a quarter-circle
     let (r, k, cx, cy) = (radius, radius * K, center.x, center.y);
     let mut pb = PathBuilder::new();
     pb.move_to(cx + r, cy);

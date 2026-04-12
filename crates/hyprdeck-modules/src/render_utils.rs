@@ -276,31 +276,24 @@ fn draw_text_impl(
     buf.set_text(fs, text, attrs, Shaping::Advanced);
     buf.shape_until_scroll(fs, false);
 
-    // Measure actual rendered text dimensions from layout runs.
+    // Measure text width for horizontal alignment.
     let text_width: f32 = buf.layout_runs().map(|r| r.line_w).fold(0.0f32, f32::max);
-    // line_y is the top of each line in buffer coordinates; adding font_size gives
-    // the bottom of the last line, which is the true rendered text block height.
-    let text_height: f32 = buf
-        .layout_runs()
-        .map(|r| r.line_y + font_size)
-        .fold(0.0f32, f32::max);
 
     let x_off = match align {
         TextAlign::Left => rect.x,
         TextAlign::Center => rect.x + (rect.width - text_width) / 2.0,
     };
-    // Centre the measured text block within the rect rather than using the
-    // nominal line_height, which overshoots and shifts text toward the top.
-    let y_off = if text_height > 0.0 {
-        rect.y + (rect.height - text_height) / 2.0
-    } else {
-        rect.y + (rect.height - line_height) / 2.0
-    };
+    // Vertical centering base: the top of the line_height box centred in the rect.
+    // The actual per-run baseline is y_off_base + run.line_y. cosmic-text sets
+    // run.line_y = centering_offset + max_ascent so that
+    // glyph_y = (y_off_base + run.line_y) - placement.top centres the text in the rect.
+    let y_off_base = rect.y + (rect.height - line_height) / 2.0;
 
     let pw = pixmap.width() as i32;
     let ph = pixmap.height() as i32;
 
     for run in buf.layout_runs() {
+        let y_off = y_off_base + run.line_y;
         for glyph in run.glyphs.iter() {
             let phys = glyph.physical((x_off, y_off), 1.0);
             let Some(img) = sc.get_image(fs, phys.cache_key) else {

@@ -113,6 +113,7 @@ impl PanelModule for WindowListModule {
         let w = n * self.config.max_button_width + (n - 1.0).max(0.0) * gap;
         let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         // Grow to fill available space — return the preferred width.
+        // (height is a hint; horizontal panels stretch modules to bar height)
         Size::new(w, h)
     }
 
@@ -234,7 +235,7 @@ impl PanelModule for WindowListModule {
                     &btn.info.title,
                     text_rect,
                     &theme.fonts.family,
-                    theme.fonts.size,
+                    render_utils::effective_font_size(bounds.height, theme.fonts.size),
                     text_color,
                 );
             }

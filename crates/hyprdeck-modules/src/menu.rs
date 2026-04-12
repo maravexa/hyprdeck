@@ -96,19 +96,20 @@ impl PanelModule for MenuModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
+        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
         let icon_w = if self.icon_image.is_some() {
-            theme.fonts.size + 4.0
+            font_size + 4.0
         } else {
             0.0
         };
         let label_w = if self.config.label.is_empty() {
             0.0
         } else {
-            render_utils::estimate_text_width(&self.config.label, theme.fonts.size) + 4.0
+            render_utils::estimate_text_width(&self.config.label, font_size) + 4.0
         };
-        let content_w = (icon_w + label_w).max(theme.fonts.size);
+        let content_w = (icon_w + label_w).max(font_size);
         let w = content_w + theme.padding.left + theme.padding.right;
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         Size::new(w, h)
     }
 
@@ -137,7 +138,7 @@ impl PanelModule for MenuModule {
         }
 
         let mut x = bounds.x + theme.padding.left;
-        let content_h = theme.fonts.size;
+        let content_h = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         let y = bounds.y + (bounds.height - content_h) / 2.0;
 
         // Draw icon.
@@ -155,7 +156,7 @@ impl PanelModule for MenuModule {
                 &self.config.label,
                 label_rect,
                 &theme.fonts.family,
-                theme.fonts.size,
+                content_h,
                 theme.colors.foreground,
             );
         }

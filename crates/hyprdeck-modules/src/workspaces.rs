@@ -166,7 +166,7 @@ impl PanelModule for WorkspacesModule {
                 &label,
                 slot_rect,
                 &theme.fonts.family,
-                theme.fonts.size * 0.8,
+                render_utils::effective_font_size(slot_rect.height, theme.fonts.size) * 0.8,
                 text_color,
             );
         }

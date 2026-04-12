@@ -237,6 +237,16 @@ pub fn estimate_text_width(text: &str, font_size: f32) -> f32 {
     font_size * 0.55 * text.chars().count().max(1) as f32
 }
 
+/// Compute an effective font size that fills the available height.
+///
+/// Scales the height to ~65% to leave breathing room above and below the text.
+/// Returns the larger of the height-derived value and the configured size, so
+/// the configured size acts as a floor (text is never shrunk by this function).
+pub fn effective_font_size(available_height: f32, configured_size: f32) -> f32 {
+    let height_derived = (available_height * 0.65).floor();
+    height_derived.max(configured_size)
+}
+
 // ── Internals ─────────────────────────────────────────────────────────────────
 
 fn with_font<F, R>(f: F) -> R
@@ -266,13 +276,26 @@ fn draw_text_impl(
     buf.set_text(fs, text, attrs, Shaping::Advanced);
     buf.shape_until_scroll(fs, false);
 
+    // Measure actual rendered text dimensions from layout runs.
     let text_width: f32 = buf.layout_runs().map(|r| r.line_w).fold(0.0f32, f32::max);
+    // line_y is the top of each line in buffer coordinates; adding font_size gives
+    // the bottom of the last line, which is the true rendered text block height.
+    let text_height: f32 = buf
+        .layout_runs()
+        .map(|r| r.line_y + font_size)
+        .fold(0.0f32, f32::max);
 
     let x_off = match align {
         TextAlign::Left => rect.x,
         TextAlign::Center => rect.x + (rect.width - text_width) / 2.0,
     };
-    let y_off = rect.y + (rect.height - line_height) / 2.0;
+    // Centre the measured text block within the rect rather than using the
+    // nominal line_height, which overshoots and shifts text toward the top.
+    let y_off = if text_height > 0.0 {
+        rect.y + (rect.height - text_height) / 2.0
+    } else {
+        rect.y + (rect.height - line_height) / 2.0
+    };
 
     let pw = pixmap.width() as i32;
     let ph = pixmap.height() as i32;
@@ -431,6 +454,24 @@ mod tests {
         let w1 = estimate_text_width("hi", 14.0);
         let w2 = estimate_text_width("hi", 28.0);
         assert!((w2 - w1 * 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn effective_font_size_scales_with_height() {
+        // 32px bar → floor(32 * 0.65) = 20, which exceeds configured 14.
+        assert_eq!(effective_font_size(32.0, 14.0), 20.0);
+    }
+
+    #[test]
+    fn effective_font_size_respects_floor() {
+        // Configured size acts as a floor: never shrink text.
+        assert_eq!(effective_font_size(10.0, 14.0), 14.0);
+    }
+
+    #[test]
+    fn effective_font_size_uses_height_when_larger() {
+        // 40px bar → floor(40 * 0.65) = 26.
+        assert_eq!(effective_font_size(40.0, 14.0), 26.0);
     }
 
     #[test]

@@ -90,7 +90,9 @@ impl PanelModule for NetworkModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let icon_w = theme.fonts.size + theme.padding.left + theme.padding.right;
+        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
+        let icon_w = font_size + theme.padding.left + theme.padding.right;
         let label_w = match self.config.display {
             NetworkDisplay::Icon => 0.0,
             NetworkDisplay::IconLabel => {
@@ -99,13 +101,12 @@ impl PanelModule for NetworkModule {
                 } else {
                     &self.snapshot.interface_name
                 };
-                render_utils::estimate_text_width(label, theme.fonts.size) + 4.0
+                render_utils::estimate_text_width(label, font_size) + 4.0
             }
             NetworkDisplay::IconRate => {
-                render_utils::estimate_text_width("↓ 0.0 MB/s", theme.fonts.size) + 4.0
+                render_utils::estimate_text_width("↓ 0.0 MB/s", font_size) + 4.0
             }
         };
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         Size::new(icon_w + label_w, h)
     }
 
@@ -137,7 +138,7 @@ impl PanelModule for NetworkModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let icon_dim = theme.fonts.size;
+        let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         let icon_rect = Rect::new(
             bounds.x + theme.padding.left,
             bounds.y + (bounds.height - icon_dim) / 2.0,
@@ -174,7 +175,7 @@ impl PanelModule for NetworkModule {
                 label,
                 label_rect,
                 &theme.fonts.family,
-                theme.fonts.size,
+                icon_dim,
                 active,
             );
         }

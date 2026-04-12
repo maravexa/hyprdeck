@@ -95,13 +95,14 @@ impl PanelModule for LunarModule {
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
         // One emoji glyph (square) plus optional label.
-        let icon_w = theme.fonts.size + theme.padding.left + theme.padding.right;
+        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
+        let icon_w = font_size + theme.padding.left + theme.padding.right;
         let label_w = if self.config.show_label && !self.cached_name.is_empty() {
-            render_utils::estimate_text_width(&self.cached_name, theme.fonts.size) + 4.0 // gap
+            render_utils::estimate_text_width(&self.cached_name, font_size) + 4.0 // gap
         } else {
             0.0
         };
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         Size::new(icon_w + label_w, h)
     }
 
@@ -123,11 +124,11 @@ impl PanelModule for LunarModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let emoji = moon_emoji(self.cached_phase);
-        let icon_size = theme.fonts.size;
+        let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         let icon_rect = Rect::new(
             bounds.x,
             bounds.y,
-            icon_size + theme.padding.left + theme.padding.right,
+            font_size + theme.padding.left + theme.padding.right,
             bounds.height,
         );
 
@@ -136,7 +137,7 @@ impl PanelModule for LunarModule {
             emoji,
             icon_rect,
             &theme.fonts.family,
-            icon_size,
+            font_size,
             theme.colors.foreground,
         );
 
@@ -153,7 +154,7 @@ impl PanelModule for LunarModule {
                 &self.cached_name,
                 label_rect,
                 &theme.fonts.family,
-                theme.fonts.size,
+                font_size,
                 theme.colors.foreground,
             );
         }

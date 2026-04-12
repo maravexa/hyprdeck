@@ -148,10 +148,11 @@ impl PanelModule for CalendarModule {
         } else {
             self.display_text.as_str()
         };
-        let w = render_utils::estimate_text_width(sample, theme.fonts.size)
+        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
+        let w = render_utils::estimate_text_width(sample, font_size)
             + theme.padding.left
             + theme.padding.right;
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         Size::new(w, h)
     }
 
@@ -171,12 +172,13 @@ impl PanelModule for CalendarModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         render_utils::draw_text_centered(
             canvas,
             &self.display_text,
             bounds,
             &theme.fonts.family,
-            theme.fonts.size,
+            font_size,
             theme.colors.foreground,
         );
         // TODO: on click, toggle an expanded month-grid popup.

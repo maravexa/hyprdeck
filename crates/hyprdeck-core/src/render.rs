@@ -462,10 +462,16 @@ impl Canvas {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        // Measure the text width for alignment and return value.
+        // Measure actual text dimensions from layout runs.
         let text_width: f32 = buffer
             .layout_runs()
             .map(|run| run.line_w)
+            .fold(0.0f32, f32::max);
+        // line_y is the top of each line in buffer coordinates; adding font_size gives
+        // the bottom of the last line, which is the true rendered text block height.
+        let text_height: f32 = buffer
+            .layout_runs()
+            .map(|run| run.line_y + font_size)
             .fold(0.0f32, f32::max);
 
         // Compute horizontal offset based on alignment.
@@ -475,8 +481,12 @@ impl Canvas {
             TextAlign::Right => rect.x + rect.width - text_width,
         };
 
-        // Vertical centering: place text so the line is centered in rect.
-        let y_offset = rect.y + (rect.height - line_height) / 2.0;
+        // Vertical centering: centre the measured text block within the rect.
+        let y_offset = if text_height > 0.0 {
+            rect.y + (rect.height - text_height) / 2.0
+        } else {
+            rect.y + (rect.height - line_height) / 2.0
+        };
 
         // Render glyphs.
         let pixmap_width = self.pixmap.width() as i32;
@@ -591,6 +601,18 @@ impl Canvas {
 
         text_width
     }
+}
+
+// ── Font sizing helpers ────────────────────────────────────────────────────────
+
+/// Compute an effective font size that fills the available height.
+///
+/// Scales the height to ~65% to leave breathing room above and below the text.
+/// Returns the larger of the height-derived value and `configured_size`, so the
+/// configured size acts as a floor (text is never shrunk by this function).
+pub fn effective_font_size(available_height: f32, configured_size: f32) -> f32 {
+    let height_derived = (available_height * 0.65).floor();
+    height_derived.max(configured_size)
 }
 
 // ── Text alignment ─────────────────────────────────────────────────────────────

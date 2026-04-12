@@ -112,10 +112,11 @@ impl PanelModule for ShellModule {
         } else {
             &self.output
         };
-        let w = render_utils::estimate_text_width(sample, theme.fonts.size)
+        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
+        let w = render_utils::estimate_text_width(sample, font_size)
             + theme.padding.left
             + theme.padding.right;
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         Size::new(w, h)
     }
 
@@ -162,12 +163,13 @@ impl PanelModule for ShellModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         if !self.output.is_empty() {
+            let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
             render_utils::draw_text_centered(
                 canvas,
                 &self.output,
                 bounds,
                 &theme.fonts.family,
-                theme.fonts.size,
+                font_size,
                 theme.colors.foreground,
             );
         }

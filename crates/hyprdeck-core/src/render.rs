@@ -462,16 +462,10 @@ impl Canvas {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        // Measure actual text dimensions from layout runs.
+        // Measure text width for horizontal alignment.
         let text_width: f32 = buffer
             .layout_runs()
             .map(|run| run.line_w)
-            .fold(0.0f32, f32::max);
-        // line_y is the top of each line in buffer coordinates; adding font_size gives
-        // the bottom of the last line, which is the true rendered text block height.
-        let text_height: f32 = buffer
-            .layout_runs()
-            .map(|run| run.line_y + font_size)
             .fold(0.0f32, f32::max);
 
         // Compute horizontal offset based on alignment.
@@ -481,18 +475,20 @@ impl Canvas {
             TextAlign::Right => rect.x + rect.width - text_width,
         };
 
-        // Vertical centering: centre the measured text block within the rect.
-        let y_offset = if text_height > 0.0 {
-            rect.y + (rect.height - text_height) / 2.0
-        } else {
-            rect.y + (rect.height - line_height) / 2.0
-        };
+        // Vertical centering base: where the top of the line_height box sits in the rect.
+        // Each run's actual y-origin is y_offset_base + run.line_y, which is the baseline
+        // for that line in pixmap coordinates. cosmic-text's run.line_y already accounts
+        // for the centering within line_height (centering_offset + max_ascent), so adding
+        // it here gives glyph_y = (y_offset_base + run.line_y) - placement.top which
+        // correctly places glyphs centred in the rect.
+        let y_offset_base = rect.y + (rect.height - line_height) / 2.0;
 
         // Render glyphs.
         let pixmap_width = self.pixmap.width() as i32;
         let pixmap_height = self.pixmap.height() as i32;
 
         for run in buffer.layout_runs() {
+            let y_offset = y_offset_base + run.line_y;
             for glyph in run.glyphs.iter() {
                 let physical = glyph.physical((x_offset, y_offset), 1.0);
 

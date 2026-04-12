@@ -1,3 +1,8 @@
+use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
+use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shm::slot::SlotPool;
+use wayland_client::protocol::wl_shm;
+
 use crate::action::Action;
 use crate::autohide::{AnimPhase, AutoHideMode, AutoHideState};
 use crate::geometry::{DisplayGeometry, Edge, Point, Size};
@@ -40,10 +45,10 @@ pub struct Panel {
     pub surface_width: u32,
     /// Current surface height in pixels.
     pub surface_height: u32,
-    // Wayland handles will be stored here once SCTK integration lands:
-    // pub layer_surface: LayerSurface,
-    // pub shm_pool: SlotPool,
-    // pub wl_surface: wl_surface::WlSurface,
+    /// SCTK layer surface handle. `None` until Wayland surfaces are created.
+    pub layer_surface: Option<LayerSurface>,
+    /// SHM slot pool for buffer allocation. `None` until Wayland surfaces are created.
+    pub pool: Option<SlotPool>,
 }
 
 impl std::fmt::Debug for Panel {
@@ -94,6 +99,8 @@ impl Panel {
             needs_resize: false,
             surface_width,
             surface_height,
+            layer_surface: None,
+            pool: None,
         }
     }
 
@@ -287,31 +294,88 @@ impl Panel {
         true
     }
 
-    /// Submit the canvas pixmap data to the Wayland surface via shm.
+    /// Submit the canvas pixmap data to the Wayland compositor via an SHM buffer.
     ///
-    /// This is a placeholder that will be wired up once SCTK layer surface
-    /// handles are stored on the Panel.
+    /// No-ops gracefully when the panel has no Wayland surface (e.g. in tests or
+    /// headless mode).  When a surface is present the function:
+    ///
+    /// 1. Allocates a slot from the SHM pool.
+    /// 2. Copies the tiny-skia RGBA pixels, byte-swapping R↔B so they match
+    ///    Wayland's `ARGB8888` little-endian layout (`[B, G, R, A]`).
+    /// 3. Attaches the buffer, damages the full surface, and commits.
     fn submit_buffer(&mut self) {
-        // SCTK buffer submission will go here:
-        // 1. Get a buffer from the shm pool matching canvas dimensions
-        // 2. Copy canvas.data() into the buffer
-        // 3. Attach buffer to wl_surface
-        // 4. Mark damage region
-        // 5. Commit the surface
+        if self.layer_surface.is_none() {
+            tracing::trace!(
+                "Panel frame ready (no surface): {}x{} ({} bytes)",
+                self.surface_width,
+                self.surface_height,
+                self.canvas.data().len(),
+            );
+            return;
+        }
+
+        let w = self.surface_width;
+        let h = self.surface_height;
+
+        // ── Phase 1: allocate a buffer slot and fill it ───────────────────
         //
-        // This is intentionally a no-op until Wayland handles are added.
-        tracing::trace!(
-            "Panel frame ready: {}x{} ({} bytes)",
-            self.surface_width,
-            self.surface_height,
-            self.canvas.data().len(),
-        );
+        // This block borrows `self.pool` (mutably) and `self.canvas` (immutably).
+        // Both borrows are released when the block exits, before Phase 2 touches
+        // `self.layer_surface`.
+        let buffer = {
+            let Some(pool) = self.pool.as_mut() else {
+                tracing::warn!("Panel has layer_surface but no shm pool");
+                return;
+            };
+
+            let stride = w as i32 * 4;
+            let (buffer, canvas_data) =
+                match pool.create_buffer(w as i32, h as i32, stride, wl_shm::Format::Argb8888) {
+                    Ok(pair) => pair,
+                    Err(e) => {
+                        tracing::error!("Failed to create shm buffer: {:?}", e);
+                        return;
+                    }
+                };
+
+            // Convert tiny-skia premultiplied RGBA [R, G, B, A]
+            // → Wayland ARGB8888 little-endian bytes   [B, G, R, A].
+            let src = self.canvas.data();
+            let copy_len = canvas_data.len().min(src.len());
+            for i in 0..(copy_len / 4) {
+                canvas_data[i * 4]     = src[i * 4 + 2]; // B
+                canvas_data[i * 4 + 1] = src[i * 4 + 1]; // G
+                canvas_data[i * 4 + 2] = src[i * 4];     // R
+                canvas_data[i * 4 + 3] = src[i * 4 + 3]; // A
+            }
+
+            buffer
+            // canvas_data and pool borrows released here
+        };
+
+        // ── Phase 2: attach the buffer to the wl_surface and commit ──────
+        let layer = self.layer_surface.as_ref().unwrap();
+        let wl_surface = layer.wl_surface();
+
+        // `attach_to` marks the slot active until the compositor releases it.
+        if let Err(e) = buffer.attach_to(wl_surface) {
+            tracing::error!("Failed to attach buffer to surface: {:?}", e);
+            return;
+        }
+        wl_surface.damage_buffer(0, 0, w as i32, h as i32);
+        wl_surface.commit();
+
+        tracing::debug!("Submitted buffer {}x{}", w, h);
     }
 
     /// Adjust layer surface margins to slide the panel off-screen
     /// during auto-hide animation.
     fn apply_auto_hide_offset(&mut self) {
-        let _offset = match self.edge {
+        let Some(layer) = &self.layer_surface else {
+            return;
+        };
+
+        let offset = match self.edge {
             Edge::Top | Edge::Bottom => {
                 -(self.auto_hide.progress * self.surface_height as f32) as i32
             }
@@ -320,11 +384,25 @@ impl Panel {
             }
         };
 
-        // SCTK margin adjustment will go here:
-        // self.layer_surface.set_margin(top, right, bottom, left);
-        // Toggle exclusive zone based on phase.
-        //
-        // This is intentionally a no-op until Wayland handles are added.
+        // Slide the panel by adjusting its margin.
+        match self.edge {
+            Edge::Top    => layer.set_margin(offset, 0, 0, 0),
+            Edge::Bottom => layer.set_margin(0, 0, offset, 0),
+            Edge::Left   => layer.set_margin(0, 0, 0, offset),
+            Edge::Right  => layer.set_margin(0, offset, 0, 0),
+        }
+
+        // Release the exclusive zone when the panel is fully hidden so
+        // windows can use that screen area.
+        let zone = if self.auto_hide.progress == 0.0 {
+            -1 // no exclusive zone while hidden
+        } else {
+            match self.edge {
+                Edge::Top | Edge::Bottom => self.surface_height as i32,
+                Edge::Left | Edge::Right => self.surface_width as i32,
+            }
+        };
+        layer.set_exclusive_zone(zone);
     }
 }
 

@@ -133,7 +133,7 @@ impl Rect {
 ///
 /// For standard rectangular displays, `usable_region` and `edge_path` are `None`.
 /// Non-`None` variants are reserved for future circular / curved display support.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DisplayGeometry {
     /// Full display bounds.
     pub bounds: Rect,

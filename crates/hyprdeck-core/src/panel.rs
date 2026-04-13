@@ -1,5 +1,5 @@
-use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use smithay_client_toolkit::shm::slot::SlotPool;
 use wayland_client::protocol::wl_shm;
 
@@ -343,9 +343,9 @@ impl Panel {
             let src = self.canvas.data();
             let copy_len = canvas_data.len().min(src.len());
             for i in 0..(copy_len / 4) {
-                canvas_data[i * 4]     = src[i * 4 + 2]; // B
+                canvas_data[i * 4] = src[i * 4 + 2]; // B
                 canvas_data[i * 4 + 1] = src[i * 4 + 1]; // G
-                canvas_data[i * 4 + 2] = src[i * 4];     // R
+                canvas_data[i * 4 + 2] = src[i * 4]; // R
                 canvas_data[i * 4 + 3] = src[i * 4 + 3]; // A
             }
 
@@ -386,10 +386,10 @@ impl Panel {
 
         // Slide the panel by adjusting its margin.
         match self.edge {
-            Edge::Top    => layer.set_margin(offset, 0, 0, 0),
+            Edge::Top => layer.set_margin(offset, 0, 0, 0),
             Edge::Bottom => layer.set_margin(0, 0, offset, 0),
-            Edge::Left   => layer.set_margin(0, 0, 0, offset),
-            Edge::Right  => layer.set_margin(0, offset, 0, 0),
+            Edge::Left => layer.set_margin(0, 0, 0, offset),
+            Edge::Right => layer.set_margin(0, offset, 0, 0),
         }
 
         // Release the exclusive zone when the panel is fully hidden so

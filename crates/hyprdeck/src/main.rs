@@ -9,22 +9,22 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     shell::{
+        WaylandSurface,
         wlr_layer::{
             Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
         },
-        WaylandSurface,
     },
-    shm::{slot::SlotPool, Shm, ShmHandler},
+    shm::{Shm, ShmHandler, slot::SlotPool},
 };
 use tracing::{debug, error, info, trace, warn};
 use wayland_client::{
+    Connection, EventQueue, Proxy, QueueHandle,
     globals::registry_queue_init,
     protocol::{wl_output, wl_surface},
-    Connection, EventQueue, Proxy, QueueHandle,
 };
 
-use hyprdeck_core::{App, Edge};
 use hyprdeck_core::ipc::HyprIpc;
+use hyprdeck_core::{App, Edge};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -91,10 +91,10 @@ impl AppState {
 
             // Anchor to the appropriate screen edge; span the full perpendicular axis.
             let anchor = match edge {
-                Edge::Top    => Anchor::TOP    | Anchor::LEFT | Anchor::RIGHT,
+                Edge::Top => Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
                 Edge::Bottom => Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-                Edge::Left   => Anchor::LEFT   | Anchor::TOP  | Anchor::BOTTOM,
-                Edge::Right  => Anchor::RIGHT  | Anchor::TOP  | Anchor::BOTTOM,
+                Edge::Left => Anchor::LEFT | Anchor::TOP | Anchor::BOTTOM,
+                Edge::Right => Anchor::RIGHT | Anchor::TOP | Anchor::BOTTOM,
             };
             layer.set_anchor(anchor);
 
@@ -120,8 +120,7 @@ impl AppState {
             debug!("Initial empty commit for surface");
 
             let pool_size = ((w * h * 4) as usize).max(4096);
-            let pool = SlotPool::new(pool_size, &self.shm)
-                .expect("Failed to allocate shm pool");
+            let pool = SlotPool::new(pool_size, &self.shm).expect("Failed to allocate shm pool");
 
             new_surfaces.push((layer, pool));
         }
@@ -228,19 +227,14 @@ impl OutputHandler for AppState {
 }
 
 impl LayerShellHandler for AppState {
-    fn closed(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        layer: &LayerSurface,
-    ) {
+    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
         let surface_id = layer.wl_surface().id();
         info!("Layer surface closed ({:?})", surface_id);
         for output in self.app.outputs.values_mut() {
             output.panels.retain(|p| {
                 p.layer_surface
                     .as_ref()
-                    .map_or(true, |l| l.wl_surface().id() != surface_id)
+                    .is_none_or(|l| l.wl_surface().id() != surface_id)
             });
         }
     }
@@ -267,7 +261,7 @@ impl LayerShellHandler for AppState {
                 if panel
                     .layer_surface
                     .as_ref()
-                    .map_or(false, |l| l.wl_surface().id() == surface_id)
+                    .is_some_and(|l| l.wl_surface().id() == surface_id)
                 {
                     target = Some((name.clone(), i));
                     break 'outer;
@@ -392,15 +386,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let conn = Connection::connect_to_env().expect("Could not connect to Wayland display");
     info!("Connected to Wayland display");
 
-    let (globals, mut event_queue): (_, EventQueue<AppState>) =
-        registry_queue_init(&conn)?;
+    let (globals, mut event_queue): (_, EventQueue<AppState>) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
 
     let compositor_state = CompositorState::bind(&globals, &qh)?;
-    let output_state     = SctkOutputState::new(&globals, &qh);
-    let shm              = Shm::bind(&globals, &qh)?;
-    let layer_shell      = LayerShell::bind(&globals, &qh)?;
-    let registry_state   = RegistryState::new(&globals);
+    let output_state = SctkOutputState::new(&globals, &qh);
+    let shm = Shm::bind(&globals, &qh)?;
+    let layer_shell = LayerShell::bind(&globals, &qh)?;
+    let registry_state = RegistryState::new(&globals);
 
     let mut app_state = AppState {
         app,
@@ -419,11 +412,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
         let state = hypr_state.read().await;
         for monitor in &state.monitors {
-            app_state.app.add_output(
-                monitor.name.clone(),
-                monitor.width,
-                monitor.height,
-            );
+            app_state
+                .app
+                .add_output(monitor.name.clone(), monitor.width, monitor.height);
             app_state.create_surfaces_for_output(&monitor.name, &qh);
         }
     }
@@ -447,18 +438,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     event_queue.flush()?;
 
     // ── 9. Signal handling ────────────────────────────────
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-    let mut sigint =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
 
     // ── 10. Async Wayland fd ──────────────────────────────
     //
     // Borrow the raw fd from the Connection for use with tokio's reactor.
     // Safety: `conn` is declared above and outlives `wayland_async_fd`.
     let wayland_raw_fd: RawFd = conn.as_fd().as_raw_fd();
-    let wayland_async_fd =
-        tokio::io::unix::AsyncFd::new(WaylandFdRef(wayland_raw_fd))?;
+    let wayland_async_fd = tokio::io::unix::AsyncFd::new(WaylandFdRef(wayland_raw_fd))?;
 
     // ── 11. Main event loop ───────────────────────────────
     //

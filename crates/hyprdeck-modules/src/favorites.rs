@@ -377,6 +377,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         assert!(!m.update(&ctx));
     }

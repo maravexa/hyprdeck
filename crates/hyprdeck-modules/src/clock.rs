@@ -193,6 +193,7 @@ mod tests {
         let ctx1 = UpdateContext {
             now: chrono::Local.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap(),
             hypr_state: &state,
+            output_name: "",
         };
         assert!(m.update(&ctx1), "first update should always return true");
         // Same second — no change.
@@ -212,10 +213,12 @@ mod tests {
         let ctx1 = UpdateContext {
             now: t1,
             hypr_state: &state,
+            output_name: "",
         };
         let ctx2 = UpdateContext {
             now: t2,
             hypr_state: &state,
+            output_name: "",
         };
         assert!(m.update(&ctx1));
         assert!(!m.update(&ctx2), "same H:M should not trigger redraw");

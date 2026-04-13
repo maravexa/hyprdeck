@@ -317,6 +317,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         // Should return false without spawning since command is empty.
         let changed = m.update(&ctx);

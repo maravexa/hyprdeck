@@ -14,6 +14,11 @@ pub struct UpdateContext<'a> {
     pub now: DateTime<Local>,
     /// Reference to the latest aggregated Hyprland state.
     pub hypr_state: &'a HyprState,
+    /// Wayland output name this panel belongs to (e.g. `"DP-2"`).
+    ///
+    /// Used by per-monitor modules (workspaces, window list) to read the
+    /// active workspace for *this* output rather than the globally focused one.
+    pub output_name: &'a str,
 }
 
 // ── Theme context ──────────────────────────────────────────────────────────────

@@ -253,6 +253,7 @@ mod tests {
         let ctx = UpdateContext {
             now: t,
             hypr_state: &state,
+            output_name: "",
         };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same day should return false");

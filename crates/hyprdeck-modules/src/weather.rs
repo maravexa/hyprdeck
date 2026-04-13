@@ -323,6 +323,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         // Should return false without blocking since no location is set.
         let changed = m.update(&ctx);

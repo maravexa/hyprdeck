@@ -234,7 +234,7 @@ impl LayerShellHandler for AppState {
             output.panels.retain(|p| {
                 p.layer_surface
                     .as_ref()
-                    .map_or(true, |l| l.wl_surface().id() != surface_id)
+                    .is_none_or(|l| l.wl_surface().id() != surface_id)
             });
         }
     }
@@ -261,7 +261,7 @@ impl LayerShellHandler for AppState {
                 if panel
                     .layer_surface
                     .as_ref()
-                    .map_or(false, |l| l.wl_surface().id() == surface_id)
+                    .is_some_and(|l| l.wl_surface().id() == surface_id)
                 {
                     target = Some((name.clone(), i));
                     break 'outer;

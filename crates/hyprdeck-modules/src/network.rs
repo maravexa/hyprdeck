@@ -411,6 +411,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         // First update polls.
         m.update(&ctx);

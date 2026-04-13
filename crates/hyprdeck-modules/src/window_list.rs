@@ -118,7 +118,17 @@ impl PanelModule for WindowListModule {
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
-        let active_ws = ctx.hypr_state.active_workspace;
+        // Use the active workspace for THIS monitor, not the globally focused
+        // one. This ensures each bar shows its own monitor's windows even when
+        // the user moves focus to a different monitor.
+        let active_ws = ctx
+            .hypr_state
+            .monitors
+            .iter()
+            .find(|m| m.name == ctx.output_name)
+            .map(|m| m.active_workspace)
+            .unwrap_or(ctx.hypr_state.active_workspace);
+
         let new_windows: Vec<WindowInfo> = ctx
             .hypr_state
             .windows
@@ -338,6 +348,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same state should return false");
@@ -360,6 +371,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         m.update(&ctx);
         assert_eq!(m.buttons.len(), 1);
@@ -410,6 +422,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         m.update(&ctx);
 

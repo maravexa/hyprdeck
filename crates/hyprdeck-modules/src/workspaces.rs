@@ -90,7 +90,16 @@ impl PanelModule for WorkspacesModule {
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
-        let new_active = ctx.hypr_state.active_workspace;
+        // Use the active workspace for THIS monitor so each bar highlights the
+        // workspace that is active on its own output, regardless of focus.
+        let new_active = ctx
+            .hypr_state
+            .monitors
+            .iter()
+            .find(|m| m.name == ctx.output_name)
+            .map(|m| m.active_workspace)
+            .unwrap_or(ctx.hypr_state.active_workspace);
+
         let new_ws: Vec<Workspace> = {
             let mut ws: Vec<Workspace> = ctx.hypr_state.workspaces.clone();
             // Filter negative IDs (special workspaces) and empty workspaces if requested.
@@ -281,6 +290,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         assert!(m.update(&ctx), "first update should return true");
         assert!(!m.update(&ctx), "same state should return false");
@@ -307,6 +317,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         m.update(&ctx);
         assert_eq!(m.workspaces.len(), 1);
@@ -346,6 +357,7 @@ mod tests {
         let ctx = UpdateContext {
             now: chrono::Local::now(),
             hypr_state: &state,
+            output_name: "",
         };
         m.update(&ctx);
         // Workspace 1 should still be present because it is active.

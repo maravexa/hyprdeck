@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::action::{self, Action, ActionError};
 use crate::config::Config;
 use crate::geometry::{DisplayGeometry, Edge};
-use crate::ipc::event::HyprEvent;
+use crate::ipc::event::{HyprEvent, HyprState};
 use crate::layout::{LayoutEngine, ModuleGroups};
 use crate::module::{PanelModule, UpdateContext};
 use crate::output::OutputState;
@@ -84,12 +84,26 @@ impl App {
     }
 
     /// Run periodic module updates (clock tick, weather poll, etc).
+    ///
+    /// Creates a per-output [`UpdateContext`] for each output so that
+    /// per-monitor modules (workspaces, window list) can identify which
+    /// monitor they belong to and read the correct per-monitor state.
+    ///
     /// Returns true if any panel needs redraw.
-    pub fn tick_modules(&mut self, ctx: &UpdateContext<'_>) -> bool {
+    pub fn tick_modules(
+        &mut self,
+        now: chrono::DateTime<chrono::Local>,
+        hypr_state: &HyprState,
+    ) -> bool {
         let mut any_dirty = false;
-        for output in self.outputs.values_mut() {
+        for (output_name, output) in self.outputs.iter_mut() {
+            let ctx = UpdateContext {
+                now,
+                hypr_state,
+                output_name: output_name.as_str(),
+            };
             for panel in &mut output.panels {
-                if panel.update_modules(ctx) {
+                if panel.update_modules(&ctx) {
                     any_dirty = true;
                 }
             }

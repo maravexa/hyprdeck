@@ -25,7 +25,6 @@ use wayland_client::{
 
 use hyprdeck_core::{App, Edge};
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::module::UpdateContext;
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -441,8 +440,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
         let now = chrono::Local::now();
         let state = hypr_state.read().await;
-        let ctx = UpdateContext { now, hypr_state: &state };
-        app_state.app.tick_modules(&ctx);
+        app_state.app.tick_modules(now, &state);
     }
     // Render any panels dirtied by the module tick.
     app_state.app.render_dirty();
@@ -467,10 +465,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Four concurrent event sources:
     //   a) Wayland compositor events (configure, close, frame callbacks)
     //   b) Hyprland IPC events (workspace changes, window focus, hotplug)
-    //   c) Module update tick (1-second interval)
+    //   c) Module update tick (250 ms — safety net for polling modules such as
+    //      clock, weather, network; IPC events trigger an immediate update too)
     //   d) Animation frame (16 ms / 60 fps, only while animating)
 
-    let mut tick_interval = tokio::time::interval(Duration::from_secs(1));
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(250));
     tick_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let mut frame_interval = tokio::time::interval(Duration::from_millis(16));
@@ -535,10 +534,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             _ => {}
                         }
 
-                        app_state.app.handle_hypr_event(&ev);
+                        // HyprState was already updated by the socket reader task
+                        // (state update happens before broadcast). Run an immediate
+                        // module tick so panels reflect the change without waiting
+                        // for the periodic fallback interval.
+                        {
+                            let now = chrono::Local::now();
+                            let state = hypr_state.read().await;
+                            app_state.app.tick_modules(now, &state);
+                        }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         warn!("Hyprland event receiver lagged by {} events", n);
+                        // Mark all panels dirty so they re-read current state on
+                        // the next tick rather than rendering stale content.
                         for output in app_state.app.outputs.values_mut() {
                             for panel in &mut output.panels {
                                 panel.dirty = true;
@@ -552,12 +561,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             }
 
-            // Module update tick (1 second)
+            // Module update tick (250 ms fallback)
             _ = tick_interval.tick() => {
                 let now = chrono::Local::now();
                 let state = hypr_state.read().await;
-                let ctx = UpdateContext { now, hypr_state: &state };
-                app_state.app.tick_modules(&ctx);
+                app_state.app.tick_modules(now, &state);
             }
 
             // Animation frame (16 ms, only while animating)

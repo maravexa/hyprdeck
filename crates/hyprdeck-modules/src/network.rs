@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
+use tiny_skia::{LineCap, Paint, PathBuilder, Stroke, Transform};
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
@@ -90,9 +91,11 @@ impl PanelModule for NetworkModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
-        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
-        let icon_w = font_size + theme.padding.left + theme.padding.right;
+        // Give the icon plenty of horizontal room — the icon is drawn at
+        // effective_font_size(bounds.height) in render(), which can be larger
+        // than font_size when bar_height > font_size.  Use 2× font_size as a
+        // generous width estimate so the icon is never squished.
+        let icon_w = theme.fonts.size * 2.0;
         let label_w = match self.config.display {
             NetworkDisplay::Icon => 0.0,
             NetworkDisplay::IconLabel => {
@@ -101,13 +104,14 @@ impl PanelModule for NetworkModule {
                 } else {
                     &self.snapshot.interface_name
                 };
-                render_utils::estimate_text_width(label, font_size) + 4.0
+                render_utils::estimate_text_width(label, theme.fonts.size) + 4.0
             }
             NetworkDisplay::IconRate => {
-                render_utils::estimate_text_width("↓ 0.0 MB/s", font_size) + 4.0
+                render_utils::estimate_text_width("↓ 0.0 MB/s", theme.fonts.size) + 4.0
             }
         };
-        Size::new(icon_w + label_w, h)
+        let padding = theme.padding.left + theme.padding.right + 8.0;
+        Size::new(icon_w + label_w + padding, theme.fonts.size * 2.0)
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
@@ -138,6 +142,13 @@ impl PanelModule for NetworkModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        tracing::debug!(
+            "Network render: connected={}, is_wireless={}, interface={}",
+            self.snapshot.is_connected,
+            self.snapshot.is_wireless,
+            self.snapshot.interface_name,
+        );
+
         let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         let icon_rect = Rect::new(
             bounds.x + theme.padding.left,
@@ -330,6 +341,55 @@ fn read_wifi_signal(iface: &str) -> Option<i32> {
 
 // ── Icon drawing ──────────────────────────────────────────────────────────────
 
+/// Draw a single WiFi arc centred at `(cx, cy)` with radius `r`.
+///
+/// Arcs span 120 degrees, opening downward (fanning upward from the anchor point),
+/// which is the standard WiFi icon shape.
+fn draw_wifi_arc(
+    canvas: &mut Pixmap,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    color: hyprdeck_core::Color,
+    stroke_w: f32,
+) {
+    // 120-degree arc, from 210° to 330° in screen coordinates
+    // (0° = right, angles increase clockwise because y-axis points down).
+    // cos/sin at these angles:
+    //   210° → (-√3/2, -1/2) → left of and above (cx, cy)
+    //   270° → (0, -1)       → directly above   (cx, cy)  ← arc peak
+    //   330° → (+√3/2, -1/2) → right of and above (cx, cy)
+    let start_rad = 210.0_f32.to_radians();
+    let end_rad = 330.0_f32.to_radians();
+    let steps = 16_u32;
+
+    let mut pb = PathBuilder::new();
+    for j in 0..=steps {
+        let t = j as f32 / steps as f32;
+        let angle = start_rad + t * (end_rad - start_rad);
+        let x = cx + r * angle.cos();
+        let y = cy + r * angle.sin();
+        if j == 0 {
+            pb.move_to(x, y);
+        } else {
+            pb.line_to(x, y);
+        }
+    }
+    let Some(path) = pb.finish() else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width: stroke_w,
+        line_cap: LineCap::Round,
+        ..Stroke::default()
+    };
+    canvas.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
 /// Draw concentric arc segments representing WiFi signal strength.
 fn draw_wifi_icon(
     canvas: &mut Pixmap,
@@ -346,21 +406,23 @@ fn draw_wifi_icon(
         _ => 1,
     };
 
+    // Anchor point at the lower-center of the icon rect.
     let cx = rect.x + rect.width / 2.0;
-    let bottom = rect.y + rect.height;
-    let max_r = rect.width.min(rect.height) * 0.9;
+    let cy = rect.y + rect.height * 0.85;
+    let max_r = rect.width.min(rect.height) * 0.85;
+    let stroke_w = (rect.width * 0.12).clamp(1.5, 3.0);
 
-    // Draw 4 arcs from small to large; active bars get full colour, inactive get dim.
     let dim = [color[0], color[1], color[2], (color[3] as f32 * 0.25) as u8];
+
+    // Draw 4 concentric arcs, smallest (innermost) to largest (outermost).
     for i in 1..=4_u8 {
         let r = max_r * (i as f32 / 4.0);
         let c = if (i as i32) <= bars { color } else { dim };
-        // Draw a small horizontal arc approximated by a dot at the arc apex.
-        let dot_y = bottom - r * 0.8;
-        render_utils::fill_circle(canvas, Point::new(cx, dot_y), r * 0.12 + 1.0, c);
+        draw_wifi_arc(canvas, cx, cy, r, c, stroke_w);
     }
-    // Dot at the base of the icon.
-    render_utils::fill_circle(canvas, Point::new(cx, bottom - 2.0), 2.0, color);
+
+    // Small filled dot at the anchor point.
+    render_utils::fill_circle(canvas, Point::new(cx, cy), stroke_w * 0.8 + 0.5, color);
 }
 
 /// Draw a simple ethernet plug icon (two horizontal bars with a stub).

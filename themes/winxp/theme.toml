@@ -10,6 +10,18 @@ modules_start  = ["menu_button", "favorites"]
 modules_center = ["window_list"]
 modules_end    = ["network", "clock"]
 
+[panels.module_styles.window_list]
+active_background   = "#1c5ab5"
+active_foreground   = "#ffffff"
+inactive_background = "#3169c6"
+inactive_foreground = "#ffffff"
+
+[panels.module_styles.workspaces]
+active_background   = "#1c5ab5"
+active_foreground   = "#ffffff"
+inactive_background = "#0a246a"
+inactive_foreground = "#b0b0b0"
+
 [style]
 background_color = "#245edb"
 foreground_color = "#ffffff"

@@ -146,14 +146,14 @@ impl PanelModule for WorkspacesModule {
             let is_active = ws.id == self.active_id;
             let is_urgent = self.config.highlight_urgent && ws.has_urgent;
 
+            // Use per-module theme colors; urgent stays as-is from the base palette.
+            let ws_style = &theme.module_styles.workspaces;
             let bg = if is_active {
-                theme.colors.accent
+                ws_style.active_background
             } else if is_urgent {
                 theme.colors.urgent
             } else {
-                let mut c = theme.colors.foreground;
-                c[3] = if self.config.hide_empty { 128 } else { 80 };
-                c
+                ws_style.inactive_background
             };
 
             render_utils::fill_rounded_rect(canvas, slot_rect, bg, radius);
@@ -165,9 +165,9 @@ impl PanelModule for WorkspacesModule {
                 ws.id.to_string()
             };
             let text_color = if is_active {
-                theme.colors.background
+                ws_style.active_foreground
             } else {
-                theme.colors.foreground
+                ws_style.inactive_foreground
             };
             let font_family = theme
                 .fonts

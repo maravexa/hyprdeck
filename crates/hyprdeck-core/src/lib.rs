@@ -35,7 +35,11 @@ pub use module::{
 };
 pub use output::OutputState;
 pub use panel::{
-    Color, ColorPalette, FontConfig, Padding, Panel, ResolvedSeparator, ResolvedStyle,
+    Color, ColorPalette, FontConfig, Padding, Panel, ResolvedModuleStyles, ResolvedSeparator,
+    ResolvedStyle, ResolvedWindowListStyle, ResolvedWorkspacesStyle,
 };
 pub use render::Canvas;
-pub use theme::{DockConfig, LayoutType, PanelDefinition, StyleDefinition, ThemeDefinition};
+pub use theme::{
+    ButtonStyleDef, DockConfig, LayoutType, ModuleStyleMap, PanelDefinition, StyleDefinition,
+    ThemeDefinition, WindowListStyleDef, WorkspacesStyleDef,
+};

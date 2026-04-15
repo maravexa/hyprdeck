@@ -192,19 +192,17 @@ impl PanelModule for WindowListModule {
             let is_focused = btn.info.is_focused;
             let is_hovered = self.hovered == Some(i);
 
-            // Button background.
+            // Button background — use per-module theme colors.
+            let wl_style = &theme.module_styles.window_list;
             let bg = if is_focused {
-                let mut c = theme.colors.accent;
-                c[3] = 200;
-                c
+                wl_style.active_background
             } else if is_hovered {
-                let mut c = theme.colors.foreground;
-                c[3] = 30;
-                c
+                // Derive hover from inactive by tripling its alpha.
+                let c = wl_style.inactive_background;
+                let a = ((c[3] as u16 * 3).min(255)) as u8;
+                [c[0], c[1], c[2], a]
             } else {
-                let mut c = theme.colors.foreground;
-                c[3] = 10;
-                c
+                wl_style.inactive_background
             };
             render_utils::fill_rounded_rect(canvas, btn_rect, bg, theme.border_radius);
 
@@ -236,9 +234,9 @@ impl PanelModule for WindowListModule {
                     bounds.height,
                 );
                 let text_color = if is_focused {
-                    theme.colors.background
+                    wl_style.active_foreground
                 } else {
-                    theme.colors.foreground
+                    wl_style.inactive_foreground
                 };
                 render_utils::draw_text_ellipsis(
                     canvas,

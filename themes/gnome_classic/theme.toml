@@ -10,6 +10,12 @@ modules_start  = ["menu_button"]
 modules_center = []
 modules_end    = ["network", "clock", "calendar"]
 
+[panels.module_styles.window_list]
+active_background   = "#4a90d9"
+active_foreground   = "#ffffff"
+inactive_background = "#3c3b3700"
+inactive_foreground = "#eeeeec"
+
 [[panels]]
 edge     = "bottom"
 height   = 32
@@ -18,6 +24,18 @@ auto_hide = { mode = "disabled" }
 modules_start  = ["window_list"]
 modules_center = []
 modules_end    = ["workspaces"]
+
+[panels.module_styles.window_list]
+active_background   = "#4a90d9"
+active_foreground   = "#ffffff"
+inactive_background = "#3c3b3700"
+inactive_foreground = "#eeeeec"
+
+[panels.module_styles.workspaces]
+active_background   = "#4a90d9"
+active_foreground   = "#ffffff"
+inactive_background = "#3c3b37"
+inactive_foreground = "#eeeeec"
 
 [style]
 background_color = "#2e3436"

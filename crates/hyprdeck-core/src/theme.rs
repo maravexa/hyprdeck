@@ -43,6 +43,63 @@ pub struct PanelDefinition {
     /// Dock-specific parameters; required when `layout = "dock"`.
     #[serde(default)]
     pub dock: Option<DockConfig>,
+    /// Per-module color overrides for this panel.
+    #[serde(default)]
+    pub module_styles: ModuleStyleMap,
+}
+
+// ── Per-module style definitions ───────────────────────────────────────────────
+
+/// Raw (unparsed) per-module color overrides within a panel definition.
+///
+/// Each field maps to a module ID and holds optional hex color strings.
+/// Missing fields fall back to the panel's base color palette during resolution.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct ModuleStyleMap {
+    /// Color overrides for the `window_list` module.
+    #[serde(default)]
+    pub window_list: Option<WindowListStyleDef>,
+    /// Color overrides for the `workspaces` module.
+    #[serde(default)]
+    pub workspaces: Option<WorkspacesStyleDef>,
+    /// Color overrides for `menu_button` and similar single-button modules.
+    #[serde(default)]
+    pub menu_button: Option<ButtonStyleDef>,
+}
+
+/// Raw window-list color strings parsed from `[panels.module_styles.window_list]`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct WindowListStyleDef {
+    /// Background of the focused/active window button (`#rrggbb` or `#rrggbbaa`).
+    pub active_background: Option<String>,
+    /// Text color of the focused/active window button.
+    pub active_foreground: Option<String>,
+    /// Background of an unfocused window button.
+    pub inactive_background: Option<String>,
+    /// Text color of an unfocused window button.
+    pub inactive_foreground: Option<String>,
+}
+
+/// Raw workspaces-switcher color strings parsed from `[panels.module_styles.workspaces]`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorkspacesStyleDef {
+    /// Background of the active workspace indicator.
+    pub active_background: Option<String>,
+    /// Label color of the active workspace indicator.
+    pub active_foreground: Option<String>,
+    /// Background of inactive workspace indicators.
+    pub inactive_background: Option<String>,
+    /// Label color of inactive workspace indicators.
+    pub inactive_foreground: Option<String>,
+}
+
+/// Raw button color strings parsed from `[panels.module_styles.menu_button]`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ButtonStyleDef {
+    /// Button background color.
+    pub background: Option<String>,
+    /// Button foreground/text color.
+    pub foreground: Option<String>,
 }
 
 /// Selects the layout algorithm used by a panel.

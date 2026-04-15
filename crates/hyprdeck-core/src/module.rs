@@ -4,7 +4,7 @@ use tiny_skia::Pixmap;
 use crate::action::Action;
 use crate::geometry::{Rect, Size};
 use crate::ipc::event::HyprState;
-use crate::panel::{ColorPalette, FontConfig, Padding};
+use crate::panel::{ColorPalette, FontConfig, Padding, ResolvedModuleStyles};
 
 // ── Update context ─────────────────────────────────────────────────────────────
 
@@ -30,6 +30,8 @@ pub struct ThemeContext {
     pub padding: Padding,
     pub border_radius: f32,
     pub opacity: f32,
+    /// Per-module color overrides resolved from the panel's `module_styles` section.
+    pub module_styles: ResolvedModuleStyles,
 }
 
 // ── Input events ───────────────────────────────────────────────────────────────

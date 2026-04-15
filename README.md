@@ -73,7 +73,7 @@ For other distributions, build from source as shown above.
 
 ### Configure
 
-Create `~/.config/hyprdeck/config.toml`:
+Create `~/.config/hypr/hyprdeck.toml`:
 
 ```toml
 # Select a shipped theme

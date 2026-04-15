@@ -146,6 +146,7 @@ mod tests {
     use hyprdeck_core::{ColorPalette, FontConfig, HyprState, Padding};
 
     fn theme() -> ThemeContext {
+        use hyprdeck_core::ResolvedModuleStyles;
         ThemeContext {
             colors: ColorPalette {
                 background: [30, 30, 30, 230],
@@ -167,6 +168,7 @@ mod tests {
             },
             border_radius: 4.0,
             opacity: 1.0,
+            module_styles: ResolvedModuleStyles::default(),
         }
     }
 

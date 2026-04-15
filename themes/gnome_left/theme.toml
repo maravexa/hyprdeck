@@ -10,6 +10,12 @@ modules_start  = ["workspaces"]
 modules_center = ["clock"]
 modules_end    = ["network", "calendar"]
 
+[panels.module_styles.workspaces]
+active_background   = "#4a90d9"
+active_foreground   = "#ffffff"
+inactive_background = "#2d2d2d"
+inactive_foreground = "#aaaaaa"
+
 [[panels]]
 edge     = "left"
 width    = 48

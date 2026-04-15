@@ -83,6 +83,7 @@ impl Panel {
             padding: style.padding,
             border_radius: style.border_radius,
             opacity: style.background_opacity,
+            module_styles: style.module_styles.clone(),
         };
 
         Self {
@@ -434,6 +435,85 @@ pub struct ResolvedStyle {
     pub background_opacity: f32,
     /// Separator line styling between adjacent modules.
     pub separator: ResolvedSeparator,
+    /// Per-module color overrides for this panel.
+    pub module_styles: ResolvedModuleStyles,
+}
+
+// ── Per-module resolved styles ────────────────────────────────────────────────
+
+/// Resolved (color-parsed) per-module style overrides for a panel.
+#[derive(Debug, Clone)]
+pub struct ResolvedModuleStyles {
+    pub window_list: ResolvedWindowListStyle,
+    pub workspaces: ResolvedWorkspacesStyle,
+}
+
+/// Resolved colors for the `window_list` module.
+#[derive(Debug, Clone)]
+pub struct ResolvedWindowListStyle {
+    pub active_background: Color,
+    pub active_foreground: Color,
+    pub inactive_background: Color,
+    pub inactive_foreground: Color,
+}
+
+/// Resolved colors for the `workspaces` module.
+#[derive(Debug, Clone)]
+pub struct ResolvedWorkspacesStyle {
+    pub active_background: Color,
+    pub active_foreground: Color,
+    pub inactive_background: Color,
+    pub inactive_foreground: Color,
+}
+
+impl Default for ResolvedModuleStyles {
+    fn default() -> Self {
+        Self {
+            window_list: ResolvedWindowListStyle {
+                active_background: [80, 160, 255, 200],
+                active_foreground: [30, 30, 30, 255],
+                inactive_background: [255, 255, 255, 10],
+                inactive_foreground: [255, 255, 255, 255],
+            },
+            workspaces: ResolvedWorkspacesStyle {
+                active_background: [80, 160, 255, 255],
+                active_foreground: [30, 30, 30, 255],
+                inactive_background: [255, 255, 255, 80],
+                inactive_foreground: [255, 255, 255, 255],
+            },
+        }
+    }
+}
+
+impl ResolvedModuleStyles {
+    /// Build default module styles from a resolved color palette.
+    ///
+    /// Used as the starting point before per-panel overrides are applied.
+    pub fn from_palette(colors: &ColorPalette) -> Self {
+        let mut inactive_wl = colors.foreground;
+        inactive_wl[3] = 10;
+
+        let mut active_wl = colors.accent;
+        active_wl[3] = 200;
+
+        let mut inactive_ws = colors.foreground;
+        inactive_ws[3] = 80;
+
+        Self {
+            window_list: ResolvedWindowListStyle {
+                active_background: active_wl,
+                active_foreground: colors.background,
+                inactive_background: inactive_wl,
+                inactive_foreground: colors.foreground,
+            },
+            workspaces: ResolvedWorkspacesStyle {
+                active_background: colors.accent,
+                active_foreground: colors.background,
+                inactive_background: inactive_ws,
+                inactive_foreground: colors.foreground,
+            },
+        }
+    }
 }
 
 /// RGBA colour palette for a panel.
@@ -600,6 +680,7 @@ mod tests {
             border_radius: 0.0,
             background_opacity: 0.9,
             separator: ResolvedSeparator::default(),
+            module_styles: ResolvedModuleStyles::default(),
         }
     }
 

@@ -8,8 +8,11 @@ use crate::ipc::event::{HyprEvent, HyprState};
 use crate::layout::{LayoutEngine, ModuleGroups};
 use crate::module::{PanelModule, UpdateContext};
 use crate::output::OutputState;
-use crate::panel::{Panel, ResolvedStyle};
-use crate::theme::{PanelDefinition, ThemeDefinition};
+use crate::panel::{
+    ColorPalette, Panel, ResolvedModuleStyles, ResolvedStyle, ResolvedWindowListStyle,
+    ResolvedWorkspacesStyle,
+};
+use crate::theme::{ModuleStyleMap, PanelDefinition, ThemeDefinition};
 
 /// Function type for creating a module by its string ID and optional config.
 ///
@@ -156,7 +159,22 @@ impl App {
 
     /// Create a single panel from a theme panel definition.
     fn create_panel(&self, panel_def: &PanelDefinition, display: &DisplayGeometry) -> Panel {
-        let style = resolve_style_from_theme(&self.theme, &self.config);
+        let mut style = resolve_style_from_theme(&self.theme, &self.config);
+
+        // Override bar_height from the panel's explicit size so the layout engine
+        // and background drawing use the actual surface dimensions (e.g. 40 for win7,
+        // not the hardcoded default of 32).
+        if let Some(h) = panel_def.height {
+            style.bar_height = h;
+        }
+        if let Some(w) = panel_def.width {
+            style.bar_height = w; // for vertical panels, bar_height doubles as bar_width
+        }
+
+        // Resolve per-panel module styles, overriding palette defaults with any
+        // colors explicitly defined in the theme's [panels.module_styles.*] section.
+        style.module_styles =
+            resolve_module_styles_for_panel(&panel_def.module_styles, &style.colors);
 
         let (surface_width, surface_height) = match panel_def.edge {
             Edge::Top | Edge::Bottom => {
@@ -215,9 +233,70 @@ impl App {
     }
 }
 
+/// Resolve per-panel module styles from raw TOML definitions, falling back to
+/// palette-derived defaults for any missing color values.
+pub fn resolve_module_styles_for_panel(
+    module_styles: &ModuleStyleMap,
+    base_colors: &ColorPalette,
+) -> ResolvedModuleStyles {
+    let parse = |hex: Option<&str>, fallback: [u8; 4]| -> [u8; 4] {
+        hex.and_then(ColorPalette::parse_hex).unwrap_or(fallback)
+    };
+
+    let wl = module_styles.window_list.as_ref();
+    let ws = module_styles.workspaces.as_ref();
+
+    // Derive sensible defaults from the panel's base colors.
+    let mut default_wl_active_bg = base_colors.accent;
+    default_wl_active_bg[3] = 200;
+    let mut default_wl_inactive_bg = base_colors.foreground;
+    default_wl_inactive_bg[3] = 10;
+    let mut default_ws_inactive_bg = base_colors.foreground;
+    default_ws_inactive_bg[3] = 80;
+
+    ResolvedModuleStyles {
+        window_list: ResolvedWindowListStyle {
+            active_background: parse(
+                wl.and_then(|s| s.active_background.as_deref()),
+                default_wl_active_bg,
+            ),
+            active_foreground: parse(
+                wl.and_then(|s| s.active_foreground.as_deref()),
+                base_colors.background,
+            ),
+            inactive_background: parse(
+                wl.and_then(|s| s.inactive_background.as_deref()),
+                default_wl_inactive_bg,
+            ),
+            inactive_foreground: parse(
+                wl.and_then(|s| s.inactive_foreground.as_deref()),
+                base_colors.foreground,
+            ),
+        },
+        workspaces: ResolvedWorkspacesStyle {
+            active_background: parse(
+                ws.and_then(|s| s.active_background.as_deref()),
+                base_colors.accent,
+            ),
+            active_foreground: parse(
+                ws.and_then(|s| s.active_foreground.as_deref()),
+                base_colors.background,
+            ),
+            inactive_background: parse(
+                ws.and_then(|s| s.inactive_background.as_deref()),
+                default_ws_inactive_bg,
+            ),
+            inactive_foreground: parse(
+                ws.and_then(|s| s.inactive_foreground.as_deref()),
+                base_colors.foreground,
+            ),
+        },
+    }
+}
+
 /// Resolve a [`ResolvedStyle`] from a theme definition and user config overrides.
 pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> ResolvedStyle {
-    use crate::panel::{ColorPalette, FontConfig, Padding, ResolvedSeparator};
+    use crate::panel::{FontConfig, Padding, ResolvedSeparator};
 
     let style_def = theme.style.as_ref();
 
@@ -273,14 +352,20 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
         .or_else(|| style_def.and_then(|s| s.opacity))
         .unwrap_or(0.9);
 
+    let colors = ColorPalette {
+        background,
+        foreground,
+        accent,
+        urgent,
+        separator: separator_color,
+    };
+
+    // Build default module styles from the resolved palette; will be
+    // overridden per-panel in create_panel() once panel_def is known.
+    let module_styles = ResolvedModuleStyles::from_palette(&colors);
+
     ResolvedStyle {
-        colors: ColorPalette {
-            background,
-            foreground,
-            accent,
-            urgent,
-            separator: separator_color,
-        },
+        colors,
         fonts: FontConfig {
             family: font_family,
             size: font_size,
@@ -299,6 +384,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
             color: separator_color,
             ..ResolvedSeparator::default()
         },
+        module_styles,
     }
 }
 
@@ -336,6 +422,7 @@ mod tests {
                 modules_center: vec![],
                 modules_end: vec![],
                 dock: None,
+                module_styles: crate::theme::ModuleStyleMap::default(),
             }],
             style: None,
         }

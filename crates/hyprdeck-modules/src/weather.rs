@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn desired_size_is_nonzero() {
         let m = WeatherModule::new(WeatherConfig::default());
-        use hyprdeck_core::{ColorPalette, FontConfig, Padding};
+        use hyprdeck_core::{ColorPalette, FontConfig, Padding, ResolvedModuleStyles};
         let theme = ThemeContext {
             colors: ColorPalette {
                 background: [0; 4],
@@ -355,6 +355,7 @@ mod tests {
             },
             border_radius: 4.0,
             opacity: 1.0,
+            module_styles: ResolvedModuleStyles::default(),
         };
         let sz = m.desired_size(&theme);
         assert!(sz.width > 0.0);

@@ -585,7 +585,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-/// Return the path to `~/.config/hyprdeck/config.toml`.
+/// Return the path to `~/.config/hypr/hyprdeck.toml`.
 fn user_config_path() -> std::path::PathBuf {
     let config_dir = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
@@ -593,5 +593,5 @@ fn user_config_path() -> std::path::PathBuf {
             let home = std::env::var_os("HOME").unwrap_or_default();
             std::path::Path::new(&home).join(".config")
         });
-    config_dir.join("hyprdeck").join("config.toml")
+    config_dir.join("hypr").join("hyprdeck.toml")
 }

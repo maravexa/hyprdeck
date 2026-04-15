@@ -87,8 +87,8 @@ Minimum Rust version: **1.85** (Cargo edition 2024 support).
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/hyprdeck/config.toml` | User config (theme selection, overrides, module config) |
-| `~/.config/hyprdeck/themes/<name>/theme.toml` | User theme override (takes precedence over embedded themes) |
+| `~/.config/hypr/hyprdeck.toml` | User config (theme selection, overrides, module config) |
+| `~/.config/hypr/hyprdeck/themes/<name>/theme.toml` | User theme override (takes precedence over embedded themes) |
 | `themes/<name>/theme.toml` | Shipped/embedded themes (compiled in via `include_dir!`) |
 
 ---

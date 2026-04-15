@@ -8,7 +8,7 @@ layout   = "horizontal"
 auto_hide = { mode = "disabled" }
 modules_start  = ["workspaces"]
 modules_center = ["clock"]
-modules_end    = ["network", "calendar"]
+modules_end    = ["sound", "network", "calendar", "power"]
 
 [panels.module_styles.workspaces]
 active_background   = "#4a90d9"
@@ -23,7 +23,7 @@ layout   = "vertical"
 auto_hide = { mode = "disabled" }
 modules_start  = ["favorites"]
 modules_center = []
-modules_end    = ["menu_button"]
+modules_end    = ["sound", "power", "menu_button"]
 
 [style]
 background_color = "#1a1a2e"

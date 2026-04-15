@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    Rect, Size, ThemeContext, UpdateContext,
+    PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -113,6 +113,14 @@ impl PanelModule for ClockModule {
         EventResult::Ignored
     }
 
+    fn has_popup(&self) -> bool {
+        true
+    }
+
+    fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        Some(Box::new(ClockPopup))
+    }
+
     fn config_schema(&self) -> ModuleConfigSchema {
         ModuleConfigSchema {
             module_id: self.id().to_owned(),
@@ -137,6 +145,52 @@ impl PanelModule for ClockModule {
                 },
             ],
         }
+    }
+}
+
+// ── Clock popup ───────────────────────────────────────────────────────────────
+
+/// Popup content for the clock module — shows HH:MM:SS with timezone.
+///
+/// `update()` returns `true` every tick so the seconds counter stays live.
+pub struct ClockPopup;
+
+impl PopupContent for ClockPopup {
+    fn desired_size(&self, _theme: &ThemeContext) -> Size {
+        Size::new(240.0, 80.0)
+    }
+
+    fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        let bold = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
+        let now = chrono::Local::now();
+
+        // Large HH:MM:SS
+        let time_str = now.format("%H:%M:%S").to_string();
+        let time_rect = Rect::new(bounds.x, bounds.y, bounds.width, 46.0);
+        render_utils::draw_text_centered(canvas, &time_str, time_rect, bold, 30.0, theme.colors.foreground);
+
+        // Timezone label (dimmed)
+        let tz_str = now.format("%Z (UTC%:z)").to_string();
+        let dim = [
+            theme.colors.foreground[0],
+            theme.colors.foreground[1],
+            theme.colors.foreground[2],
+            (theme.colors.foreground[3] as f32 * 0.6) as u8,
+        ];
+        let tz_rect = Rect::new(bounds.x, bounds.y + 50.0, bounds.width, 24.0);
+        render_utils::draw_text_centered(canvas, &tz_str, tz_rect, &theme.fonts.family, 12.0, dim);
+    }
+
+    fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+        PopupEventResult::Ignored
+    }
+
+    fn update(&mut self) -> bool {
+        true // always redraw so the seconds counter ticks
     }
 }
 

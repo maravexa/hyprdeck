@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    Rect, Size, ThemeContext, UpdateContext,
+    PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -185,8 +185,15 @@ impl PanelModule for CalendarModule {
     }
 
     fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> EventResult {
-        // TODO: toggle expanded month view on click.
         EventResult::Ignored
+    }
+
+    fn has_popup(&self) -> bool {
+        true
+    }
+
+    fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        Some(Box::new(CalendarPopup::new(&self.config.system)))
     }
 
     fn config_schema(&self) -> ModuleConfigSchema {
@@ -231,6 +238,94 @@ impl PanelModule for CalendarModule {
                 },
             ],
         }
+    }
+}
+
+// ── Calendar popup ────────────────────────────────────────────────────────────
+
+/// Popup content for the calendar module — renders `cal` output as a month grid.
+pub struct CalendarPopup {
+    cal_output: String,
+}
+
+impl CalendarPopup {
+    pub fn new(system: &CalendarSystem) -> Self {
+        let cal_output = match system {
+            CalendarSystem::Gregorian => run_cal_command(),
+            CalendarSystem::Discordian => run_command_or_fallback(
+                "fn0rd",
+                &["cal"],
+                "Discordian calendar requires the fn0rd tool.\nInstall it for a full calendar view.",
+            ),
+            CalendarSystem::Custom => "Custom calendar view not yet implemented.".into(),
+        };
+        Self { cal_output }
+    }
+}
+
+fn run_cal_command() -> String {
+    std::process::Command::new("cal")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_else(|_| "Calendar unavailable.\n(cal not found)".into())
+}
+
+fn run_command_or_fallback(cmd: &str, args: &[&str], fallback: &str) -> String {
+    std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_else(|_| fallback.into())
+}
+
+impl PopupContent for CalendarPopup {
+    fn desired_size(&self, _theme: &ThemeContext) -> Size {
+        // cal output is typically ~20 chars wide, 8 lines tall.
+        let lines = self.cal_output.lines().count().max(1) as f32;
+        let max_chars = self
+            .cal_output
+            .lines()
+            .map(|l| l.len())
+            .max()
+            .unwrap_or(20) as f32;
+        // 9px per char (monospace), 18px per line, 24px total padding
+        Size::new(max_chars * 9.0 + 24.0, lines * 18.0 + 24.0)
+    }
+
+    fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        // Prefer monospace; fall back through bold → regular
+        let font = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
+        let font_size = 12.0;
+        let line_height = 18.0;
+
+        for (i, line) in self.cal_output.lines().enumerate() {
+            let line_rect = Rect::new(
+                bounds.x,
+                bounds.y + i as f32 * line_height,
+                bounds.width,
+                line_height,
+            );
+            render_utils::draw_text(
+                canvas,
+                line,
+                line_rect,
+                font,
+                font_size,
+                theme.colors.foreground,
+            );
+        }
+    }
+
+    fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+        PopupEventResult::Ignored
+    }
+
+    fn update(&mut self) -> bool {
+        false
     }
 }
 

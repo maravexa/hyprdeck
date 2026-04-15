@@ -150,4 +150,21 @@ pub trait PanelModule: Send {
 
     /// Describe all configurable options for HyprCube GUI integration.
     fn config_schema(&self) -> ModuleConfigSchema;
+
+    /// Whether this module shows a popup dropdown when left-clicked.
+    ///
+    /// When `true` the panel intercepts left-clicks and calls
+    /// [`popup_content`][PanelModule::popup_content] instead of forwarding
+    /// the event to [`handle_event`][PanelModule::handle_event].
+    fn has_popup(&self) -> bool {
+        false
+    }
+
+    /// Return the popup content for this module.
+    ///
+    /// Called by the panel on left-click when [`has_popup`][PanelModule::has_popup]
+    /// returns `true`.  Should never return `None` when `has_popup()` is `true`.
+    fn popup_content(&self) -> Option<Box<dyn crate::popup::PopupContent>> {
+        None
+    }
 }

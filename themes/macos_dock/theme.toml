@@ -2,11 +2,20 @@ name        = "macOS Dock"
 description = "Floating dock with icon magnification, inspired by macOS"
 
 [[panels]]
+edge     = "top"
+height   = 28
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["menu_button"]
+modules_center = ["lunar"]
+modules_end    = ["network", "clock", "calendar"]
+
+[[panels]]
 edge     = "bottom"
 layout   = "dock"
 auto_hide = { mode = "dock_hover", hover_margin = 20, hide_delay_ms = 800 }
 modules_start  = []
-modules_center = ["favorites", "window_list"]
+modules_center = ["favorites", "window_list", "lunar"]
 modules_end    = []
 
 [panels.dock]

@@ -2,13 +2,22 @@ name        = "GNOME Left"
 description = "Vertical left-side panel inspired by GNOME Shell overview, icon-only"
 
 [[panels]]
+edge     = "top"
+height   = 28
+layout   = "horizontal"
+auto_hide = { mode = "disabled" }
+modules_start  = ["workspaces"]
+modules_center = ["clock"]
+modules_end    = ["network", "calendar"]
+
+[[panels]]
 edge     = "left"
 width    = 48
 layout   = "vertical"
 auto_hide = { mode = "disabled" }
-modules_start  = ["menu_button", "favorites"]
-modules_center = ["workspaces"]
-modules_end    = ["network", "clock"]
+modules_start  = ["favorites"]
+modules_center = []
+modules_end    = ["menu_button"]
 
 [style]
 background_color = "#1a1a2e"

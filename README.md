@@ -28,9 +28,9 @@ Pick a shipped theme, set your accent colour, done.  Power users can copy a them
 |-------|------|-------------|
 | `win7` | Bottom | Windows 7 Aero glass taskbar (height 40, translucent) |
 | `winxp` | Bottom | Windows XP chunky taskbar (height 30, solid teal) |
-| `macos_dock` | Bottom | Floating dock with icon magnification |
+| `macos_dock` | Top + Bottom | Floating dock with icon magnification |
 | `gnome_classic` | Top + Bottom | Classic GNOME 2 dual-panel layout |
-| `gnome_left` | Left | Vertical left sidebar, icon-only |
+| `gnome_left` | Top + Left | GNOME 3 Vertical left sidebar layout |
 
 ---
 
@@ -61,7 +61,7 @@ git clone https://github.com/maravexa/hyprdeck
 cd hyprdeck
 cargo build --release
 # Copy binary to PATH
-install -Dm755 target/release/hyprdeck ~/.local/bin/hyprdeck
+sudo install -Dm755 target/release/hyprdeck /usr/local/sbin/hyprdeck
 ```
 
 ### Installation
@@ -110,24 +110,6 @@ exec-once = hyprdeck
 
 ---
 
-## Built-in Shaders
-
-20 shaders ship out of the box:
-
-bezier, caustics, donut, fire, geometry, hypercube, julia, kaleidoscope, lissajous, mandelbrot, marble, matrix, network, planet, plasma, snowfall, starfield, tesla, tunnel, voronoi
-
-Use `shader = "cycle"` to rotate through all shaders automatically.
-
-### Palettes
-
-Built-in palettes: rainbow, vaporwave (and more). Use `palette = "cycle"` to rotate.
-
-### Performance
-
-See [`docs/BENCHMARK-0.4.0.md`](docs/BENCHMARK-0.4.0.md) for per-shader GPU utilization benchmarks on a GMKtec Nucbox K12 (AMD ATI HawkPoint1), dual 1920×1200 monitors.
-
----
-
 ## Architecture
 
 HyprDeck is a Cargo workspace with four crates:
@@ -155,7 +137,7 @@ Key libraries:
 HyprDeck is part of a trio of Hyprland-native tools:
 
 - **HyprCube** *(planned)* — GUI system settings panel.  HyprDeck modules implement `config_schema()` so HyprCube can auto-generate a settings UI for each module without any extra glue code.
-- **HyprSaver** *(in development)* — screensaver for Hyprland.  Shares theme colour palettes and the `fn0rd` lunar-phase library with HyprDeck.
+- **HyprSaver** *(in development)* — screensaver for Hyprland.  Shares theme colour palettes from HyprCube
 
 ---
 
@@ -170,13 +152,6 @@ HyprDeck is part of a trio of Hyprland-native tools:
 - [ ] Theme hot-reload on file change
 - [ ] Hyprland IPC (event socket + command socket)
 - [ ] HiDPI / fractional scale support
-
-### v0.5.0
-
-- [ ] Wormhole shader (fundamental rewrite from v0.4.0 deferral)
-- [ ] Further heavy shader optimizations (target: bring 70%-tier shaders below 60%)
-- [x] ~~Screencopy pipeline~~ (moved to v0.5.0)
-- [x] ~~Rain-on-Glass shader~~ (moved to v0.5.0)
 
 ### Post-1.0
 

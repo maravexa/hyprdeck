@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "hyprdeck"
-version = "0.4.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "hyprdeck-core",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "hyprdeck-core"
-version = "0.4.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "cosmic-text",
@@ -923,7 +923,7 @@ dependencies = [
 
 [[package]]
 name = "hyprdeck-modules"
-version = "0.4.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "cosmic-text",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "hyprdeck-themes"
-version = "0.4.0"
+version = "0.1.0"
 dependencies = [
  "hyprdeck-core",
  "include_dir",

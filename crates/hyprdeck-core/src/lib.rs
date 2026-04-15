@@ -37,8 +37,8 @@ pub use module::{
 pub use popup::{PopupContent, PopupEventResult, PopupState};
 pub use output::OutputState;
 pub use panel::{
-    Color, ColorPalette, FontConfig, Padding, Panel, ResolvedModuleStyles, ResolvedSeparator,
-    ResolvedStyle, ResolvedWindowListStyle, ResolvedWorkspacesStyle,
+    Color, ColorPalette, FontConfig, InputResult, Padding, Panel, ResolvedModuleStyles,
+    ResolvedSeparator, ResolvedStyle, ResolvedWindowListStyle, ResolvedWorkspacesStyle,
 };
 pub use render::Canvas;
 pub use theme::{

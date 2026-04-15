@@ -24,7 +24,7 @@ use wayland_client::{
 };
 
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::{App, Edge};
+use hyprdeck_core::{App, Edge, InputResult};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -47,6 +47,131 @@ struct AppState {
 }
 
 impl AppState {
+    /// Create a Wayland `Overlay`-layer surface for a panel's popup.
+    ///
+    /// Called after [`Panel::handle_input`] returns [`InputResult::OpenPopup`].
+    /// Reads the desired size from `panel.popup.content`, creates the surface,
+    /// positions it adjacent to the panel edge, performs the initial empty commit
+    /// to trigger a `configure`, and calls [`Panel::attach_popup_surface`] to hand
+    /// over ownership.
+    ///
+    /// Not yet reachable: becomes live once pointer input is wired up (Part 3).
+    #[allow(dead_code)]
+    fn create_popup_surface_for_panel(
+        &mut self,
+        output_name: &str,
+        panel_idx: usize,
+        module_id: &str,
+        qh: &QueueHandle<AppState>,
+    ) {
+        // ── Read desired size from popup content ──────────────────────────────
+        let (width, height, edge, panel_w, panel_h) = {
+            let Some(output) = self.app.outputs.get(output_name) else {
+                return;
+            };
+            let panel = &output.panels[panel_idx];
+            let Some(content) = &panel.popup.content else {
+                warn!("open_popup called but popup.content is None for '{}'", module_id);
+                return;
+            };
+            let size = content.desired_size(&panel.theme_ctx);
+            let w = (size.width.ceil() as u32).max(1);
+            let h = (size.height.ceil() as u32).max(1);
+            (w, h, panel.edge, panel.surface_width, panel.surface_height)
+        };
+
+        let wl_output = self.wl_outputs.get(output_name).cloned();
+
+        // ── Create the wl_surface and layer surface ───────────────────────────
+        let surface = self.compositor_state.create_surface(qh);
+        let layer = self.layer_shell.create_layer_surface(
+            qh,
+            surface,
+            Layer::Overlay,
+            Some("hyprdeck-popup"),
+            wl_output.as_ref(),
+        );
+
+        // Fixed size — no exclusive zone (overlay must not push other surfaces).
+        layer.set_size(width, height);
+        layer.set_exclusive_zone(0);
+
+        // Anchor and margin place the popup flush against the panel surface.
+        // The margin on the panel-side equals the panel thickness, so the popup
+        // appears just outside the panel rather than overlapping it.
+        match edge {
+            Edge::Bottom => {
+                layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+                layer.set_margin(0, 0, panel_h as i32, 0);
+            }
+            Edge::Top => {
+                layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+                layer.set_margin(panel_h as i32, 0, 0, 0);
+            }
+            Edge::Left => {
+                layer.set_anchor(Anchor::LEFT | Anchor::TOP);
+                layer.set_margin(0, 0, 0, panel_w as i32);
+            }
+            Edge::Right => {
+                layer.set_anchor(Anchor::RIGHT | Anchor::TOP);
+                layer.set_margin(0, panel_w as i32, 0, 0);
+            }
+        }
+
+        // Initial empty commit → compositor sends configure.
+        layer.commit();
+        info!(
+            "Created popup surface {}x{} for module '{}' on '{}'",
+            width, height, module_id, output_name
+        );
+
+        // ── Allocate SHM pool ─────────────────────────────────────────────────
+        let pool_size = ((width * height * 4) as usize).max(4096);
+        let pool = match SlotPool::new(pool_size, &self.shm) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to allocate popup shm pool: {}", e);
+                return;
+            }
+        };
+
+        // ── Hand ownership to the panel's PopupState ──────────────────────────
+        let output = self.app.outputs.get_mut(output_name).unwrap();
+        output.panels[panel_idx].attach_popup_surface(layer, pool, width, height);
+    }
+
+    /// Process an [`InputResult`] that was returned by a panel's `handle_input`.
+    ///
+    /// Creates or destroys popup Wayland surfaces as needed and flushes the
+    /// Wayland connection.  Returns the event queue so the caller can flush.
+    ///
+    /// Not yet reachable: becomes live once pointer input is wired up (Part 3).
+    #[allow(dead_code)]
+    fn handle_input_result(
+        &mut self,
+        result: InputResult,
+        output_name: &str,
+        panel_idx: usize,
+        qh: &QueueHandle<AppState>,
+    ) {
+        match result {
+            InputResult::OpenPopup { module_id } => {
+                self.create_popup_surface_for_panel(
+                    output_name,
+                    panel_idx,
+                    &module_id,
+                    qh,
+                );
+            }
+            InputResult::ClosePopup => {
+                // PopupState::close() already dropped the LayerSurface.
+                // The connection flush in the main loop will send the destroy.
+                debug!("Popup closed for panel {} on '{}'", panel_idx, output_name);
+            }
+            InputResult::Action(_) | InputResult::None => {}
+        }
+    }
+
     /// Create Wayland layer surfaces for all panels of a newly-added output.
     ///
     /// Panels that already have a surface are skipped.  A `SlotPool` is
@@ -230,19 +355,40 @@ impl LayerShellHandler for AppState {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
         let surface_id = layer.wl_surface().id();
         info!("Layer surface closed ({:?})", surface_id);
+
         for output in self.app.outputs.values_mut() {
-            output.panels.retain(|p| {
+            // Check whether this is a panel surface being closed.
+            let was_panel = output.panels.iter().any(|p| {
                 p.layer_surface
                     .as_ref()
-                    .is_none_or(|l| l.wl_surface().id() != surface_id)
+                    .is_some_and(|l| l.wl_surface().id() == surface_id)
             });
+            if was_panel {
+                output.panels.retain(|p| {
+                    p.layer_surface
+                        .as_ref()
+                        .is_none_or(|l| l.wl_surface().id() != surface_id)
+                });
+                continue;
+            }
+
+            // Otherwise check whether it is a popup surface being closed by
+            // the compositor (e.g. the user dismissed it externally).
+            for panel in &mut output.panels {
+                if panel.popup.surface_id() == Some(surface_id.clone()) {
+                    info!("Popup surface closed by compositor for module {:?}", panel.popup.active_module);
+                    panel.popup.close();
+                    break;
+                }
+            }
         }
     }
 
     /// Called by SCTK **after** it has already sent `ack_configure`.
     ///
-    /// Responsibility: resize canvas if needed, mark dirty, render immediately
-    /// so the compositor has a buffer to show.
+    /// Handles both panel surfaces and popup overlay surfaces. For panel
+    /// surfaces: resize canvas if needed, mark dirty, render immediately.
+    /// For popup surfaces: mark popup dirty and render the first frame.
     fn configure(
         &mut self,
         _conn: &Connection,
@@ -254,8 +400,9 @@ impl LayerShellHandler for AppState {
         let surface_id = layer.wl_surface().id();
         debug!("Layer configure event for surface {:?}, size {:?}", surface_id, configure.new_size);
 
-        // Locate the panel that owns this surface.
-        let mut target: Option<(String, usize)> = None;
+        // Search for either a panel surface or a popup surface matching this id.
+        let mut panel_target: Option<(String, usize)> = None;
+        let mut popup_target: Option<(String, usize)> = None;
         'outer: for (name, output) in &self.app.outputs {
             for (i, panel) in output.panels.iter().enumerate() {
                 if panel
@@ -263,13 +410,55 @@ impl LayerShellHandler for AppState {
                     .as_ref()
                     .is_some_and(|l| l.wl_surface().id() == surface_id)
                 {
-                    target = Some((name.clone(), i));
+                    panel_target = Some((name.clone(), i));
+                    break 'outer;
+                }
+                if panel.popup.surface_id() == Some(surface_id.clone()) {
+                    popup_target = Some((name.clone(), i));
                     break 'outer;
                 }
             }
         }
 
-        let Some((output_name, panel_idx)) = target else {
+        // ── Popup configure ───────────────────────────────────────────────────
+        if let Some((output_name, panel_idx)) = popup_target {
+            let (w, h) = configure.new_size;
+            info!("Popup configure: {}x{} for panel {} on '{}'", w, h, panel_idx, output_name);
+
+            let output = self.app.outputs.get_mut(&output_name).unwrap();
+            let panel = &mut output.panels[panel_idx];
+
+            // If the compositor assigned different dimensions than we requested,
+            // update the popup canvas.
+            if w != 0 && h != 0 {
+                let pw = panel.popup.width;
+                let ph = panel.popup.height;
+                if w != pw || h != ph {
+                    panel.popup.width = w;
+                    panel.popup.height = h;
+                    if let Some(canvas) = &mut panel.popup.canvas {
+                        canvas.resize(w, h);
+                    }
+                    if let Some(pool) = &mut panel.popup.pool {
+                        let needed = (w * h * 4) as usize;
+                        if needed > pool.len() {
+                            if let Err(e) = pool.resize(needed) {
+                                error!("Failed to resize popup shm pool: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            panel.popup.dirty = true;
+            debug!("Rendering popup on configure");
+            // Borrow panel.theme_ctx and panel.popup separately (different fields).
+            panel.popup.frame(&panel.theme_ctx);
+            return;
+        }
+
+        // ── Panel configure ───────────────────────────────────────────────────
+        let Some((output_name, panel_idx)) = panel_target else {
             warn!("Configure for UNMATCHED surface {:?}", surface_id);
             return;
         };

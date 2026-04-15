@@ -53,18 +53,16 @@ Pick a shipped theme, set your accent colour, done.  Power users can copy a them
 
 ## Quick Start
 
-### Install
+### Manual Install
 
 ```sh
 # Build from source (Rust 1.85+ required for edition 2024)
 git clone https://github.com/maravexa/hyprdeck
 cd hyprdeck
-cargo build --release
-# Copy binary to PATH
-sudo install -Dm755 target/release/hyprdeck /usr/local/sbin/hyprdeck
+./install.sh
 ```
 
-### Installation
+### Install via AUR
 
 ```sh
 # AUR (Arch / Arch-based)

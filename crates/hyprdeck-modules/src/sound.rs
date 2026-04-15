@@ -316,10 +316,12 @@ impl PanelModule for SoundModule {
     }
 
     fn has_popup(&self) -> bool {
+        tracing::debug!("{} has_popup called → true", self.id());
         true
     }
 
     fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        tracing::debug!("{} popup_content called", self.id());
         Some(Box::new(SoundPopup {
             state: self.state.clone(),
             slider_value: self.state.volume_percent as f32 / 100.0,

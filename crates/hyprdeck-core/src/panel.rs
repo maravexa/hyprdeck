@@ -208,7 +208,9 @@ impl Panel {
                             .find(|m| m.id() == module_id.as_str())
                             .map(|m| m.has_popup())
                             .unwrap_or(false);
+                        tracing::debug!("Click on module '{}', has_popup={}", module_id, has_popup);
                         if has_popup {
+                            tracing::info!("Toggling popup for module '{}'", module_id);
                             let content = self
                                 .modules
                                 .iter()

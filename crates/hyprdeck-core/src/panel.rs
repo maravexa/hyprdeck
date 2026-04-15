@@ -204,6 +204,19 @@ impl Panel {
     ///   should flush the Wayland connection.
     /// - [`InputResult::None`] — event consumed or ignored with no side effects.
     pub fn handle_input(&mut self, event: InputEvent) -> InputResult {
+        // Stage 3: trace entry point so we can confirm the call is reached.
+        tracing::info!("Panel::handle_input called with {:?}", event);
+        tracing::debug!("  last_layout exists: {}", self.last_layout.is_some());
+        if let Some(layout) = &self.last_layout {
+            tracing::debug!("  module_bounds count: {}", layout.module_bounds.len());
+            for (id, bounds) in &layout.module_bounds {
+                tracing::debug!(
+                    "  module '{}': x={:.0} y={:.0} w={:.0} h={:.0}",
+                    id, bounds.x, bounds.y, bounds.width, bounds.height
+                );
+            }
+        }
+
         // Update auto-hide state
         match &event {
             InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. } => {}
@@ -219,6 +232,7 @@ impl Panel {
 
         // Hit test: find which module the event lands on
         let Some(layout) = &self.last_layout else {
+            tracing::warn!("Panel::handle_input: no layout available for hit test — panel has not rendered yet");
             return InputResult::None;
         };
 
@@ -230,8 +244,18 @@ impl Panel {
         };
 
         if let Some(pt) = point {
+            let mut hit_any = false;
             for (module_id, bounds) in &layout.module_bounds {
                 if bounds.contains(pt) {
+                    hit_any = true;
+                    // Stage 4: log every module hit.
+                    if matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }) {
+                        tracing::info!(
+                            "HIT module '{}' at ({:.0}, {:.0})",
+                            module_id, pt.x, pt.y
+                        );
+                    }
+
                     // Left-click on a popup-capable module toggles its popup.
                     if let InputEvent::MousePress {
                         button: MouseButton::Left,
@@ -244,7 +268,7 @@ impl Panel {
                             .find(|m| m.id() == module_id.as_str())
                             .map(|m| m.has_popup())
                             .unwrap_or(false);
-                        tracing::debug!("Click on module '{}', has_popup={}", module_id, has_popup);
+                        tracing::info!("  has_popup={}", has_popup);
                         if has_popup {
                             tracing::info!("Toggling popup for module '{}'", module_id);
                             // Record whether this module's popup was already open
@@ -284,6 +308,16 @@ impl Panel {
                             EventResult::Ignored => {}
                         }
                     }
+                }
+            }
+            // Stage 4: warn when a click lands outside every module's bounds.
+            if !hit_any {
+                if matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }) {
+                    tracing::warn!(
+                        "Click at ({:.0}, {:.0}) missed all {} module bound(s)",
+                        pt.x, pt.y,
+                        layout.module_bounds.len()
+                    );
                 }
             }
         }

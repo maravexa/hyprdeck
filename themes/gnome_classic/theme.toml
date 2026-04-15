@@ -7,8 +7,8 @@ height   = 28
 layout   = "horizontal"
 auto_hide = { mode = "disabled" }
 modules_start  = ["menu_button"]
-modules_center = []
-modules_end    = ["sound", "network", "clock", "calendar", "power"]
+modules_center = ["calendar", "clock"]
+modules_end    = ["lunar", "sound", "network", "power"]
 
 [panels.module_styles.window_list]
 active_background   = "#4a90d9"

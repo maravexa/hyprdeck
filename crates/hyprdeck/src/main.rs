@@ -4,10 +4,13 @@ use std::time::Duration;
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
+    delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState as SctkOutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::{Capability, SeatHandler, SeatState},
+    seat::pointer::{BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, PointerEvent, PointerEventKind, PointerHandler},
     shell::{
         WaylandSurface,
         wlr_layer::{
@@ -20,11 +23,11 @@ use tracing::{debug, error, info, trace, warn};
 use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_output, wl_surface},
+    protocol::{wl_output, wl_pointer, wl_seat, wl_surface},
 };
 
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::{App, Edge, InputResult};
+use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -39,11 +42,16 @@ struct AppState {
     output_state: SctkOutputState,
     shm: Shm,
     layer_shell: LayerShell,
+    seat_state: SeatState,
 
     /// Map from Wayland output connector name (e.g. "DP-2") to the WlOutput
     /// handle.  Populated as Wayland outputs are advertised.  Used to direct
     /// each panel's layer surface to the correct physical output.
     wl_outputs: HashMap<String, wl_output::WlOutput>,
+
+    /// The active Wayland pointer object.  `None` until a seat with pointer
+    /// capability is seen.
+    pointer: Option<wl_pointer::WlPointer>,
 }
 
 impl AppState {
@@ -55,8 +63,6 @@ impl AppState {
     /// to trigger a `configure`, and calls [`Panel::attach_popup_surface`] to hand
     /// over ownership.
     ///
-    /// Not yet reachable: becomes live once pointer input is wired up (Part 3).
-    #[allow(dead_code)]
     fn create_popup_surface_for_panel(
         &mut self,
         output_name: &str,
@@ -145,8 +151,6 @@ impl AppState {
     /// Creates or destroys popup Wayland surfaces as needed and flushes the
     /// Wayland connection.  Returns the event queue so the caller can flush.
     ///
-    /// Not yet reachable: becomes live once pointer input is wired up (Part 3).
-    #[allow(dead_code)]
     fn handle_input_result(
         &mut self,
         result: InputResult,
@@ -170,6 +174,27 @@ impl AppState {
             }
             InputResult::Action(_) | InputResult::None => {}
         }
+    }
+
+    /// Find the (output_name, panel_index) pair that owns the given `wl_surface`.
+    ///
+    /// Searches panel layer surfaces only (not popup surfaces).  Used in
+    /// [`PointerHandler::pointer_frame`] to route events to the correct panel.
+    fn find_panel_for_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> Option<(String, usize)> {
+        let target_id = surface.id();
+        for (output_name, output) in &self.app.outputs {
+            for (panel_idx, panel) in output.panels.iter().enumerate() {
+                if let Some(layer) = &panel.layer_surface {
+                    if layer.wl_surface().id() == target_id {
+                        return Some((output_name.clone(), panel_idx));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Create Wayland layer surfaces for all panels of a newly-added output.
@@ -260,6 +285,197 @@ impl AppState {
 }
 
 // ── SCTK delegate trait implementations ──────────────────────────────────────
+
+impl SeatHandler for AppState {
+    fn seat_state(&mut self) -> &mut SeatState {
+        &mut self.seat_state
+    }
+
+    fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
+        info!("SEAT New seat: {:?}", seat.id());
+    }
+
+    fn new_capability(
+        &mut self,
+        _conn: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        info!("SEAT New capability: {:?}", capability);
+        if capability == Capability::Pointer && self.pointer.is_none() {
+            match self.seat_state.get_pointer(qh, &seat) {
+                Ok(ptr) => {
+                    info!("SEAT Created pointer {:?}", ptr.id());
+                    self.pointer = Some(ptr);
+                }
+                Err(e) => {
+                    error!("SEAT Failed to create pointer: {}", e);
+                }
+            }
+        }
+    }
+
+    fn remove_capability(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        info!("SEAT Capability removed: {:?}", capability);
+        if capability == Capability::Pointer {
+            self.pointer = None;
+        }
+    }
+
+    fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
+        info!("SEAT Seat removed: {:?}", seat.id());
+        self.pointer = None;
+    }
+}
+
+impl PointerHandler for AppState {
+    fn pointer_frame(
+        &mut self,
+        _conn: &Connection,
+        qh: &QueueHandle<Self>,
+        _pointer: &wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        for event in events {
+            match &event.kind {
+                // ── Stage 1: trace every raw Wayland pointer event ────────
+                PointerEventKind::Enter { .. } => {
+                    info!(
+                        "POINTER Enter surface {:?} at ({:.1}, {:.1})",
+                        event.surface.id(),
+                        event.position.0,
+                        event.position.1
+                    );
+                    if let Some((output_name, panel_idx)) =
+                        self.find_panel_for_surface(&event.surface)
+                    {
+                        let output = self.app.outputs.get_mut(&output_name).unwrap();
+                        output.panels[panel_idx].on_cursor_enter();
+                    } else {
+                        debug!(
+                            "POINTER Enter: surface {:?} not matched to any panel",
+                            event.surface.id()
+                        );
+                    }
+                }
+
+                PointerEventKind::Leave { .. } => {
+                    info!("POINTER Leave surface {:?}", event.surface.id());
+                    if let Some((output_name, panel_idx)) =
+                        self.find_panel_for_surface(&event.surface)
+                    {
+                        let output = self.app.outputs.get_mut(&output_name).unwrap();
+                        output.panels[panel_idx].on_cursor_leave();
+                    }
+                }
+
+                PointerEventKind::Motion { .. } => {
+                    trace!(
+                        "POINTER Motion ({:.1}, {:.1})",
+                        event.position.0,
+                        event.position.1
+                    );
+                    if let Some((output_name, panel_idx)) =
+                        self.find_panel_for_surface(&event.surface)
+                    {
+                        let input = InputEvent::MouseMove {
+                            x: event.position.0 as f32,
+                            y: event.position.1 as f32,
+                        };
+                        let output = self.app.outputs.get_mut(&output_name).unwrap();
+                        let _ = output.panels[panel_idx].handle_input(input);
+                    }
+                }
+
+                PointerEventKind::Press { button, .. } => {
+                    info!(
+                        "POINTER Press button={:#x} at ({:.1}, {:.1})",
+                        button,
+                        event.position.0,
+                        event.position.1
+                    );
+                    let mb = match *button {
+                        BTN_LEFT => Some(MouseButton::Left),
+                        BTN_RIGHT => Some(MouseButton::Right),
+                        BTN_MIDDLE => Some(MouseButton::Middle),
+                        other => {
+                            debug!("POINTER Press unknown button={:#x}, ignoring", other);
+                            None
+                        }
+                    };
+                    if let Some(mb) = mb {
+                        // ── Stage 2: route to panel ───────────────────────
+                        if let Some((output_name, panel_idx)) =
+                            self.find_panel_for_surface(&event.surface)
+                        {
+                            let input = InputEvent::MousePress {
+                                x: event.position.0 as f32,
+                                y: event.position.1 as f32,
+                                button: mb,
+                            };
+                            info!(
+                                "Routing click to panel on output '{}', panel_idx={}",
+                                output_name, panel_idx
+                            );
+                            let result = {
+                                let output =
+                                    self.app.outputs.get_mut(&output_name).unwrap();
+                                let r = output.panels[panel_idx].handle_input(input);
+                                info!("handle_input returned: {:?}", r);
+                                r
+                            };
+                            self.handle_input_result(result, &output_name, panel_idx, qh);
+                        } else {
+                            warn!(
+                                "POINTER Press: surface {:?} not matched to any panel",
+                                event.surface.id()
+                            );
+                        }
+                    }
+                }
+
+                PointerEventKind::Release { button, .. } => {
+                    info!(
+                        "POINTER Release button={:#x} at ({:.1}, {:.1})",
+                        button,
+                        event.position.0,
+                        event.position.1
+                    );
+                    let mb = match *button {
+                        BTN_LEFT => Some(MouseButton::Left),
+                        BTN_RIGHT => Some(MouseButton::Right),
+                        BTN_MIDDLE => Some(MouseButton::Middle),
+                        _ => None,
+                    };
+                    if let Some(mb) = mb {
+                        if let Some((output_name, panel_idx)) =
+                            self.find_panel_for_surface(&event.surface)
+                        {
+                            let input = InputEvent::MouseRelease {
+                                x: event.position.0 as f32,
+                                y: event.position.1 as f32,
+                                button: mb,
+                            };
+                            let output = self.app.outputs.get_mut(&output_name).unwrap();
+                            let _ = output.panels[panel_idx].handle_input(input);
+                        }
+                    }
+                }
+
+                PointerEventKind::Axis { .. } => {
+                    debug!("POINTER Scroll");
+                }
+            }
+        }
+    }
+}
 
 impl CompositorHandler for AppState {
     fn scale_factor_changed(
@@ -508,13 +724,15 @@ impl ProvidesRegistryState for AppState {
         &mut self.registry_state
     }
 
-    registry_handlers![SctkOutputState];
+    registry_handlers![SctkOutputState, SeatState];
 }
 
 delegate_compositor!(AppState);
 delegate_output!(AppState);
 delegate_layer!(AppState);
 delegate_shm!(AppState);
+delegate_seat!(AppState);
+delegate_pointer!(AppState);
 delegate_registry!(AppState);
 
 // ── Wayland fd helper ─────────────────────────────────────────────────────────
@@ -583,6 +801,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let shm = Shm::bind(&globals, &qh)?;
     let layer_shell = LayerShell::bind(&globals, &qh)?;
     let registry_state = RegistryState::new(&globals);
+    let seat_state = SeatState::new(&globals, &qh);
 
     let mut app_state = AppState {
         app,
@@ -591,7 +810,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         output_state,
         shm,
         layer_shell,
+        seat_state,
         wl_outputs: HashMap::new(),
+        pointer: None,
     };
 
     // Initial roundtrip: enumerates Wayland outputs (populates wl_outputs).

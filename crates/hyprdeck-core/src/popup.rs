@@ -79,6 +79,13 @@ pub struct PopupState {
     pub content: Option<Box<dyn PopupContent>>,
     /// Whether the popup content has changed and needs repainting.
     pub dirty: bool,
+    /// Whether the compositor has sent a configure event for the popup surface.
+    ///
+    /// The Wayland protocol forbids attaching a buffer before the compositor
+    /// sends the first configure. This is set to `true` in
+    /// `LayerShellHandler::configure` and reset to `false` whenever the surface
+    /// is destroyed (on `close()`).
+    pub configured: bool,
     /// The `zwlr_layer_surface_v1` for this popup on the `Overlay` layer.
     /// `None` until [`attach_surface`][Self::attach_surface] is called.
     pub layer_surface: Option<LayerSurface>,
@@ -99,6 +106,7 @@ impl PopupState {
             active_module: None,
             content: None,
             dirty: false,
+            configured: false,
             layer_surface: None,
             pool: None,
             canvas: None,
@@ -119,6 +127,7 @@ impl PopupState {
         self.active_module = None;
         self.content = None;
         self.dirty = false;
+        self.configured = false;
         self.width = 0;
         self.height = 0;
     }
@@ -187,7 +196,6 @@ impl PopupState {
             tracing::info!("Closing popup for '{}'", module_id);
             self.close();
         } else {
-            tracing::info!("Opening popup for '{}'", module_id);
             self.open(module_id.to_string(), content_fn());
         }
     }
@@ -215,9 +223,14 @@ impl PopupState {
     /// Clears the `dirty` flag, renders the content into the internal canvas,
     /// then submits an SHM buffer to the compositor. Returns `true` if a frame
     /// was produced. No-ops when:
+    /// - the compositor has not yet sent a configure event (`configured = false`), or
     /// - the popup is not dirty, or
     /// - no Wayland surface has been attached yet.
     pub fn frame(&mut self, theme: &ThemeContext) -> bool {
+        if !self.configured {
+            tracing::debug!("Popup not yet configured, skipping render");
+            return false;
+        }
         if !self.dirty || self.layer_surface.is_none() {
             return false;
         }

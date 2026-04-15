@@ -666,6 +666,7 @@ impl LayerShellHandler for AppState {
                 }
             }
 
+            panel.popup.configured = true;
             panel.popup.dirty = true;
             debug!("Rendering popup on configure");
             // Borrow panel.theme_ctx and panel.popup separately (different fields).

@@ -85,6 +85,8 @@ pub struct HyprState {
     pub monitors: Vec<MonitorInfo>,
     /// All open windows.
     pub windows: Vec<WindowInfo>,
+    /// Name of the currently focused monitor (updated by `focusedmon` events).
+    pub focused_monitor: String,
 }
 
 impl HyprState {
@@ -96,6 +98,16 @@ impl HyprState {
         match event {
             HyprEvent::WorkspaceChanged { id } => {
                 self.active_workspace = *id;
+                // Update the focused monitor's active workspace immediately so
+                // per-monitor rendering reflects the change without waiting for
+                // a subsequent `focusedmon` event.
+                if let Some(mon) = self
+                    .monitors
+                    .iter_mut()
+                    .find(|m| m.name == self.focused_monitor)
+                {
+                    mon.active_workspace = *id;
+                }
             }
             HyprEvent::WorkspaceAdded { id } => {
                 if !self.workspaces.iter().any(|ws| ws.id == *id) {
@@ -240,6 +252,7 @@ impl HyprState {
                 self.monitors.retain(|m| m.name != *name);
             }
             HyprEvent::ActiveMonitor { name, workspace_id } => {
+                self.focused_monitor = name.clone();
                 if let Some(mon) = self.monitors.iter_mut().find(|m| m.name == *name) {
                     mon.active_workspace = *workspace_id;
                 } else {
@@ -799,6 +812,7 @@ mod tests {
                 win("aabb", "kitty", "shell", 1),
                 win("ccdd", "firefox", "GitHub", 2),
             ],
+            focused_monitor: "DP-1".to_owned(),
         }
     }
 

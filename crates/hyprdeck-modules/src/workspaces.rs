@@ -52,22 +52,20 @@ impl WorkspacesModule {
         }
     }
 
-    /// Width of each workspace slot in pixels.
-    fn slot_size(theme: &ThemeContext) -> f32 {
-        // Square slot: height minus top+bottom padding.
-        theme.fonts.size + theme.padding.top + theme.padding.bottom
-    }
-
     /// Gap between adjacent slots.
     fn gap() -> f32 {
-        4.0
+        2.0
     }
 
     /// Return the workspace at horizontal position `x` within `bounds`, if any.
+    ///
+    /// Slot positions are right-aligned within `bounds` to match `render()`.
     fn slot_at_x(&self, x: f32, bounds: Rect, slot: f32) -> Option<&Workspace> {
         let gap = Self::gap();
+        let n = self.workspaces.len();
         for (i, ws) in self.workspaces.iter().enumerate() {
-            let sx = bounds.x + i as f32 * (slot + gap);
+            let remaining = (n - i) as f32;
+            let sx = bounds.x + bounds.width - remaining * slot - (remaining - 1.0) * gap;
             if x >= sx && x < sx + slot {
                 return Some(ws);
             }
@@ -82,11 +80,13 @@ impl PanelModule for WorkspacesModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
+        // Estimate slot size as font_size * 2.5; render() uses bounds.height for
+        // the actual slot size, so this is a width-allocation hint only.
+        let estimated_slot = theme.fonts.size * 2.5;
         let count = self.workspaces.len().max(1) as f32;
-        let slot = Self::slot_size(theme);
         let gap = Self::gap();
-        let w = count * slot + (count - 1.0).max(0.0) * gap;
-        Size::new(w, slot)
+        let w = count * estimated_slot + (count - 1.0).max(0.0) * gap;
+        Size::new(w, estimated_slot)
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
@@ -131,12 +131,16 @@ impl PanelModule for WorkspacesModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let slot = Self::slot_size(theme);
+        // Squares fill the full bar height — no top/bottom gap.
+        let slot = bounds.height;
         let gap = Self::gap();
         let radius = theme.border_radius.min(slot / 2.0);
+        let n = self.workspaces.len();
 
         for (i, ws) in self.workspaces.iter().enumerate() {
-            let sx = bounds.x + i as f32 * (slot + gap);
+            // Right-align: slots are packed against the right edge of bounds.
+            let remaining = (n - i) as f32;
+            let sx = bounds.x + bounds.width - remaining * slot - (remaining - 1.0) * gap;
             let slot_rect = Rect::new(sx, bounds.y, slot, slot);
 
             let is_active = ws.id == self.active_id;
@@ -147,11 +151,6 @@ impl PanelModule for WorkspacesModule {
             } else if is_urgent {
                 theme.colors.urgent
             } else {
-                // Occupied: foreground at 50% alpha; empty: at 20%.
-                let occupied =
-                    // We don't have window state here; use foreground with lower opacity.
-                    true; // conservative — always render as occupied when visible
-                let _ = occupied;
                 let mut c = theme.colors.foreground;
                 c[3] = if self.config.hide_empty { 128 } else { 80 };
                 c
@@ -159,7 +158,7 @@ impl PanelModule for WorkspacesModule {
 
             render_utils::fill_rounded_rect(canvas, slot_rect, bg, radius);
 
-            // Draw label (number or name), in foreground or background colour.
+            // Draw label — bold, large font that fills the square.
             let label = if self.config.show_names {
                 ws.name.as_str().to_owned()
             } else {
@@ -170,41 +169,19 @@ impl PanelModule for WorkspacesModule {
             } else {
                 theme.colors.foreground
             };
-            render_utils::draw_text_centered(
-                canvas,
-                &label,
-                slot_rect,
-                &theme.fonts.family,
-                render_utils::effective_font_size(slot_rect.height, theme.fonts.size) * 0.8,
-                text_color,
-            );
+            let font_family = theme
+                .fonts
+                .bold_family
+                .as_deref()
+                .unwrap_or(&theme.fonts.family);
+            let font_size = (slot * 0.6).floor();
+            render_utils::draw_text_centered(canvas, &label, slot_rect, font_family, font_size, text_color);
         }
     }
 
     fn handle_event(&mut self, event: &InputEvent, bounds: Rect) -> EventResult {
-        let slot = Self::slot_size(&ThemeContext {
-            // We don't have theme here, approximate with a reasonable default.
-            colors: hyprdeck_core::ColorPalette {
-                background: [0; 4],
-                foreground: [255; 4],
-                accent: [0; 4],
-                urgent: [0; 4],
-                separator: [0; 4],
-            },
-            fonts: hyprdeck_core::FontConfig {
-                family: String::new(),
-                size: 14.0,
-                bold_family: None,
-            },
-            padding: hyprdeck_core::Padding {
-                top: 4.0,
-                right: 4.0,
-                bottom: 4.0,
-                left: 4.0,
-            },
-            border_radius: 4.0,
-            opacity: 1.0,
-        });
+        // Slot size matches render(): squares fill the full bar height.
+        let slot = bounds.height;
 
         match event {
             InputEvent::MousePress { x, button, .. } => {
@@ -388,18 +365,17 @@ mod tests {
             },
         ];
         let slot = 24.0_f32;
-        let gap = WorkspacesModule::gap();
         let bounds = Rect::new(0.0, 0.0, 200.0, 32.0);
-        // Centre of first slot
-        let ws = m.slot_at_x(slot / 2.0, bounds, slot);
+        // Slots are right-aligned within bounds (gap = 2.0):
+        //   ws1 (i=0): sx = 200 - 3*24 - 2*2 = 124, centre = 136
+        //   ws2 (i=1): sx = 200 - 2*24 - 1*2 = 150, centre = 162
+        let ws = m.slot_at_x(136.0, bounds, slot);
         assert_eq!(ws.map(|w| w.id), Some(1));
-        // Centre of second slot
-        let ws2 = m.slot_at_x(slot + gap + slot / 2.0, bounds, slot);
+        let ws2 = m.slot_at_x(162.0, bounds, slot);
         assert_eq!(ws2.map(|w| w.id), Some(2));
-        // In the gap — None
-        let none = m.slot_at_x(slot + gap / 4.0, bounds, slot);
-        // May or may not hit the gap depending on rounding; just assert no panic.
-        let _ = none;
+        // Below the first right-aligned slot — no workspace there.
+        let none = m.slot_at_x(24.5, bounds, slot);
+        let _ = none; // just assert no panic
     }
 
     #[test]
@@ -411,33 +387,13 @@ mod tests {
             monitor: "".into(),
             has_urgent: false,
         }];
-        let slot = WorkspacesModule::slot_size(&ThemeContext {
-            colors: hyprdeck_core::ColorPalette {
-                background: [0; 4],
-                foreground: [255; 4],
-                accent: [0; 4],
-                urgent: [0; 4],
-                separator: [0; 4],
-            },
-            fonts: hyprdeck_core::FontConfig {
-                family: String::new(),
-                size: 14.0,
-                bold_family: None,
-            },
-            padding: hyprdeck_core::Padding {
-                top: 4.0,
-                right: 4.0,
-                bottom: 4.0,
-                left: 4.0,
-            },
-            border_radius: 4.0,
-            opacity: 1.0,
-        });
-        let bounds = Rect::new(0.0, 0.0, 200.0, slot);
+        // handle_event uses bounds.height as slot size.
+        // With 1 workspace and bounds 32×32, the single slot fills [0, 32).
+        let bounds = Rect::new(0.0, 0.0, 32.0, 32.0);
         let result = m.handle_event(
             &InputEvent::MousePress {
-                x: slot / 2.0,
-                y: slot / 2.0,
+                x: 16.0, // centre of the single workspace slot
+                y: 16.0,
                 button: MouseButton::Left,
             },
             bounds,

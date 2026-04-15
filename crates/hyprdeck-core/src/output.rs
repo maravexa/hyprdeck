@@ -37,10 +37,18 @@ impl OutputState {
     }
 
     /// Redraw all panels that have been marked dirty.
+    ///
+    /// Also renders dirty popup surfaces: if only the popup content changed
+    /// (not the parent panel), the popup frame is submitted without a full
+    /// panel re-render.
     pub fn render_dirty_panels(&mut self) {
         for panel in &mut self.panels {
             if panel.dirty {
+                // panel.frame() also calls popup.frame() if the popup is dirty.
                 panel.frame(&self.display_geometry);
+            } else if panel.popup.dirty && panel.popup.layer_surface.is_some() {
+                // Panel itself is clean but the popup content changed.
+                panel.popup.frame(&panel.theme_ctx);
             }
         }
     }

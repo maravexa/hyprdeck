@@ -66,6 +66,34 @@ impl std::fmt::Debug for Panel {
     }
 }
 
+// ── InputResult ───────────────────────────────────────────────────────────────
+
+/// Return value from [`Panel::handle_input`].
+///
+/// The binary crate checks this after every input event to decide whether to
+/// create or destroy a popup Wayland surface.
+#[derive(Debug)]
+pub enum InputResult {
+    /// Event was consumed or ignored with no further side effects.
+    None,
+    /// A module produced an action that should be dispatched.
+    Action(Action),
+    /// A popup was toggled **open** for the given module.
+    ///
+    /// The binary crate must:
+    /// 1. Read `panel.popup.content` to get the desired size.
+    /// 2. Create a `Layer::Overlay` surface with the compositor and layer shell.
+    /// 3. Call `panel.attach_popup_surface(layer_surface, pool, width, height)`.
+    /// 4. Flush the Wayland connection.
+    OpenPopup { module_id: String },
+    /// The active popup was toggled **closed**.
+    ///
+    /// `PopupState::close()` has already been called (which drops the
+    /// `LayerSurface`). The binary crate only needs to flush the connection
+    /// so the compositor receives the destroy request.
+    ClosePopup,
+}
+
 impl Panel {
     /// Create a new panel from a theme definition on a given output.
     ///
@@ -166,8 +194,16 @@ impl Panel {
     /// Handle an input event on this panel.
     ///
     /// Determines which module the event targets based on layout bounds,
-    /// then forwards to that module. Returns any [`Action`] to execute.
-    pub fn handle_input(&mut self, event: InputEvent) -> Option<Action> {
+    /// then forwards to that module. Returns an [`InputResult`] describing
+    /// what happened:
+    ///
+    /// - [`InputResult::Action`] — the module produced an action to dispatch.
+    /// - [`InputResult::OpenPopup`] — a popup was toggled open; the caller
+    ///   must create a Wayland surface and call [`Panel::attach_popup_surface`].
+    /// - [`InputResult::ClosePopup`] — the popup was closed; the caller
+    ///   should flush the Wayland connection.
+    /// - [`InputResult::None`] — event consumed or ignored with no side effects.
+    pub fn handle_input(&mut self, event: InputEvent) -> InputResult {
         // Update auto-hide state
         match &event {
             InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. } => {}
@@ -183,7 +219,7 @@ impl Panel {
 
         // Hit test: find which module the event lands on
         let Some(layout) = &self.last_layout else {
-            return None;
+            return InputResult::None;
         };
 
         let point = match &event {
@@ -211,6 +247,10 @@ impl Panel {
                         tracing::debug!("Click on module '{}', has_popup={}", module_id, has_popup);
                         if has_popup {
                             tracing::info!("Toggling popup for module '{}'", module_id);
+                            // Record whether this module's popup was already open
+                            // so we can distinguish open vs close after the toggle.
+                            let was_open = self.popup.active_module.as_deref()
+                                == Some(module_id.as_str());
                             let content = self
                                 .modules
                                 .iter()
@@ -220,7 +260,15 @@ impl Panel {
                                 self.popup.toggle(module_id, || c);
                             }
                             self.dirty = true;
-                            return None;
+                            if was_open {
+                                // Toggle closed the popup.
+                                return InputResult::ClosePopup;
+                            } else {
+                                // Toggle opened (or switched to) a new popup.
+                                return InputResult::OpenPopup {
+                                    module_id: module_id.clone(),
+                                };
+                            }
                         }
                     }
 
@@ -228,10 +276,10 @@ impl Panel {
                         self.modules.iter_mut().find(|m| m.id() == module_id.as_str())
                     {
                         match module.handle_event(&event, *bounds) {
-                            EventResult::Action(action) => return Some(action),
+                            EventResult::Action(action) => return InputResult::Action(action),
                             EventResult::Handled => {
                                 self.dirty = true;
-                                return None;
+                                return InputResult::None;
                             }
                             EventResult::Ignored => {}
                         }
@@ -240,7 +288,21 @@ impl Panel {
             }
         }
 
-        None
+        InputResult::None
+    }
+
+    /// Attach a freshly-created popup Wayland surface to this panel.
+    ///
+    /// Called by the binary crate after it processes an [`InputResult::OpenPopup`]
+    /// and creates the surface via `CompositorState` / `LayerShell`.
+    pub fn attach_popup_surface(
+        &mut self,
+        layer_surface: smithay_client_toolkit::shell::wlr_layer::LayerSurface,
+        pool: smithay_client_toolkit::shm::slot::SlotPool,
+        width: u32,
+        height: u32,
+    ) {
+        self.popup.attach_surface(layer_surface, pool, width, height);
     }
 
     /// Notify the panel that the cursor entered its surface.
@@ -325,6 +387,11 @@ impl Panel {
 
         // Submit buffer to Wayland surface
         self.submit_buffer();
+
+        // Render popup to its own surface if it has been attached and is dirty.
+        if self.popup.dirty && self.popup.layer_surface.is_some() {
+            self.popup.frame(&self.theme_ctx);
+        }
 
         true
     }
@@ -783,7 +850,7 @@ mod tests {
             y: 5000.0,
             button: MouseButton::Left,
         });
-        assert!(result.is_none());
+        assert!(matches!(result, InputResult::None));
     }
 
     #[test]

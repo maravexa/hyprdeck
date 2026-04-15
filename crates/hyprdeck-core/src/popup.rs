@@ -301,6 +301,23 @@ impl PopupState {
         wl_surface.damage_buffer(0, 0, w as i32, h as i32);
         wl_surface.commit();
         tracing::info!("Popup buffer submitted {}x{}", w, h);
+
+        // ── Diagnostic: save popup canvas to PNG for offline inspection ──────
+        //
+        // Inspect /tmp/hyprdeck-popup-debug.png after a popup opens:
+        //   • All transparent → rendering problem (content not drawn into canvas)
+        //   • Visible content  → positioning or compositor-layer problem
+        //   • Wrong colours    → pixel-format mismatch (R↔B swap needed/wrong)
+        //
+        // Remove this block once the popup is confirmed visible on screen.
+        #[cfg(debug_assertions)]
+        if let Some(canvas) = &self.canvas {
+            let pixmap = canvas.pixmap();
+            match pixmap.save_png("/tmp/hyprdeck-popup-debug.png") {
+                Ok(()) => tracing::info!("Saved popup debug PNG → /tmp/hyprdeck-popup-debug.png"),
+                Err(e) => tracing::error!("Failed to save popup debug PNG: {}", e),
+            }
+        }
     }
 
     /// Render the popup content into an external `canvas` (for off-screen compositing).

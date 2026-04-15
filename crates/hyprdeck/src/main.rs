@@ -100,7 +100,12 @@ impl AppState {
 
         // Fixed size — no exclusive zone (overlay must not push other surfaces).
         layer.set_size(width, height);
-        layer.set_exclusive_zone(0);
+        // Use -1 so this surface is NOT repositioned to accommodate other surfaces'
+        // exclusive zones (e.g. the panel's own reserved strip).  With zone=0 the
+        // compositor would add the panel's exclusive-zone offset ON TOP of our margin,
+        // placing the popup too far from the bar.  With zone=-1 our margins are always
+        // measured from the raw output edge, which is what we want.
+        layer.set_exclusive_zone(-1);
 
         // Anchor and margin place the popup flush against the panel surface.
         // The margin on the panel-side equals the panel thickness, so the popup
@@ -123,6 +128,10 @@ impl AppState {
                 layer.set_margin(0, panel_w as i32, 0, 0);
             }
         }
+        info!(
+            "Popup positioning: edge={:?}, anchor+margin: panel_w={} panel_h={}",
+            edge, panel_w, panel_h
+        );
 
         // Initial empty commit → compositor sends configure.
         layer.commit();

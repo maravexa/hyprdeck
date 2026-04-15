@@ -114,10 +114,12 @@ impl PanelModule for ClockModule {
     }
 
     fn has_popup(&self) -> bool {
+        tracing::debug!("{} has_popup called → true", self.id());
         true
     }
 
     fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        tracing::debug!("{} popup_content called", self.id());
         Some(Box::new(ClockPopup))
     }
 

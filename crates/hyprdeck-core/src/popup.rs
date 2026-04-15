@@ -78,6 +78,7 @@ impl PopupState {
 
     /// Close the active popup, if any.
     pub fn close(&mut self) {
+        tracing::info!("Popup close called, active={:?}", self.active_module);
         self.active_module = None;
         self.content = None;
         self.dirty = false;
@@ -85,6 +86,7 @@ impl PopupState {
 
     /// Open a popup for `module_id`, closing any existing popup first.
     pub fn open(&mut self, module_id: String, content: Box<dyn PopupContent>) {
+        tracing::info!("Opening popup for '{}'", module_id);
         self.close();
         self.active_module = Some(module_id);
         self.content = Some(content);
@@ -100,9 +102,12 @@ impl PopupState {
         module_id: &str,
         content_fn: impl FnOnce() -> Box<dyn PopupContent>,
     ) {
+        tracing::info!("popup.toggle called for '{}'", module_id);
         if self.active_module.as_deref() == Some(module_id) {
+            tracing::info!("Closing popup for '{}'", module_id);
             self.close();
         } else {
+            tracing::info!("Opening popup for '{}'", module_id);
             self.open(module_id.to_string(), content_fn());
         }
     }

@@ -167,10 +167,12 @@ impl PanelModule for LunarModule {
     }
 
     fn has_popup(&self) -> bool {
+        tracing::debug!("{} has_popup called → true", self.id());
         true
     }
 
     fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        tracing::debug!("{} popup_content called", self.id());
         let illumination = {
             // cos((phase - 0.5) * 2π) maps 0=new(0%) 0.5=full(100%) 1=new(0%)
             let angle = (self.cached_phase - 0.5) * 2.0 * std::f64::consts::PI;

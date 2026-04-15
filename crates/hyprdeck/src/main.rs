@@ -252,7 +252,7 @@ impl LayerShellHandler for AppState {
         _serial: u32,
     ) {
         let surface_id = layer.wl_surface().id();
-        debug!("Configure event for surface {:?}", surface_id);
+        debug!("Layer configure event for surface {:?}, size {:?}", surface_id, configure.new_size);
 
         // Locate the panel that owns this surface.
         let mut target: Option<(String, usize)> = None;
@@ -270,7 +270,7 @@ impl LayerShellHandler for AppState {
         }
 
         let Some((output_name, panel_idx)) = target else {
-            error!("Configure: no panel found for surface {:?}", surface_id);
+            warn!("Configure for UNMATCHED surface {:?}", surface_id);
             return;
         };
 

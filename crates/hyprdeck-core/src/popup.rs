@@ -171,7 +171,7 @@ impl PopupState {
         self.width = width;
         self.height = height;
         self.dirty = true;
-        tracing::info!("Popup surface attached: {}x{}", width, height);
+        tracing::debug!("Popup surface state initialised: {}x{}", width, height);
     }
 
     /// Returns the Wayland `ObjectId` of the popup surface, if one exists.
@@ -300,7 +300,7 @@ impl PopupState {
         }
         wl_surface.damage_buffer(0, 0, w as i32, h as i32);
         wl_surface.commit();
-        tracing::debug!("Submitted popup buffer {}x{}", w, h);
+        tracing::info!("Popup buffer submitted {}x{}", w, h);
     }
 
     /// Render the popup content into an external `canvas` (for off-screen compositing).

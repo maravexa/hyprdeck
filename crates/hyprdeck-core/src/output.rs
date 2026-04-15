@@ -46,8 +46,10 @@ impl OutputState {
             if panel.dirty {
                 // panel.frame() also calls popup.frame() if the popup is dirty.
                 panel.frame(&self.display_geometry);
-            } else if panel.popup.dirty && panel.popup.layer_surface.is_some() {
+            } else if panel.popup.dirty && panel.popup.configured && panel.popup.layer_surface.is_some() {
                 // Panel itself is clean but the popup content changed.
+                // Guard on `configured`: the Wayland protocol forbids attaching
+                // a buffer before the compositor sends the first configure event.
                 panel.popup.frame(&panel.theme_ctx);
             }
         }

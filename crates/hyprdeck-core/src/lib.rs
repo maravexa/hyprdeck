@@ -8,6 +8,7 @@ pub mod layout;
 pub mod module;
 pub mod output;
 pub mod panel;
+pub mod popup;
 pub mod render;
 pub mod theme;
 
@@ -33,6 +34,7 @@ pub use module::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
     PanelModule, ThemeContext, UpdateContext,
 };
+pub use popup::{PopupContent, PopupEventResult, PopupState};
 pub use output::OutputState;
 pub use panel::{
     Color, ColorPalette, FontConfig, Padding, Panel, ResolvedModuleStyles, ResolvedSeparator,

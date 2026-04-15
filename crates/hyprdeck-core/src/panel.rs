@@ -8,7 +8,8 @@ use crate::autohide::{AnimPhase, AutoHideMode, AutoHideState};
 use crate::geometry::{DisplayGeometry, Edge, Point, Size};
 use crate::ipc::event::HyprEvent;
 use crate::layout::{LayoutEngine, LayoutResult, ModuleGroups, ModuleSizeProvider};
-use crate::module::{EventResult, InputEvent, PanelModule, ThemeContext, UpdateContext};
+use crate::module::{EventResult, InputEvent, MouseButton, PanelModule, ThemeContext, UpdateContext};
+use crate::popup::PopupState;
 use crate::render::Canvas;
 
 /// RGBA colour stored as four bytes (0–255).
@@ -37,6 +38,8 @@ pub struct Panel {
     pub style: ResolvedStyle,
     /// Theme context passed to modules for rendering.
     pub theme_ctx: ThemeContext,
+    /// Active popup dropdown for this panel (at most one at a time).
+    pub popup: PopupState,
     /// Whether this panel needs to be redrawn.
     pub dirty: bool,
     /// Whether the panel surface needs to be resized.
@@ -96,6 +99,7 @@ impl Panel {
             auto_hide: AutoHideState::from_mode(auto_hide_mode),
             style,
             theme_ctx,
+            popup: PopupState::new(),
             dirty: true,
             needs_resize: false,
             surface_width,
@@ -192,7 +196,35 @@ impl Panel {
         if let Some(pt) = point {
             for (module_id, bounds) in &layout.module_bounds {
                 if bounds.contains(pt) {
-                    if let Some(module) = self.modules.iter_mut().find(|m| m.id() == module_id) {
+                    // Left-click on a popup-capable module toggles its popup.
+                    if let InputEvent::MousePress {
+                        button: MouseButton::Left,
+                        ..
+                    } = &event
+                    {
+                        let has_popup = self
+                            .modules
+                            .iter()
+                            .find(|m| m.id() == module_id.as_str())
+                            .map(|m| m.has_popup())
+                            .unwrap_or(false);
+                        if has_popup {
+                            let content = self
+                                .modules
+                                .iter()
+                                .find(|m| m.id() == module_id.as_str())
+                                .and_then(|m| m.popup_content());
+                            if let Some(c) = content {
+                                self.popup.toggle(module_id, || c);
+                            }
+                            self.dirty = true;
+                            return None;
+                        }
+                    }
+
+                    if let Some(module) =
+                        self.modules.iter_mut().find(|m| m.id() == module_id.as_str())
+                    {
                         match module.handle_event(&event, *bounds) {
                             EventResult::Action(action) => return Some(action),
                             EventResult::Handled => {

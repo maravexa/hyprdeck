@@ -13,7 +13,7 @@ use tiny_skia::{LineCap, Paint, PathBuilder, Stroke, Transform};
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    Point, Rect, Size, ThemeContext, UpdateContext,
+    Point, PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -194,6 +194,14 @@ impl PanelModule for NetworkModule {
 
     fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> EventResult {
         EventResult::Ignored
+    }
+
+    fn has_popup(&self) -> bool {
+        true
+    }
+
+    fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        Some(Box::new(NetworkPopup::new(&self.snapshot)))
     }
 
     fn config_schema(&self) -> ModuleConfigSchema {
@@ -449,6 +457,134 @@ fn draw_ethernet_icon(canvas: &mut Pixmap, rect: Rect, color: hyprdeck_core::Col
             lw,
         );
     }
+}
+
+// ── Network popup ─────────────────────────────────────────────────────────────
+
+/// Popup content for the network module — shows connection details.
+pub struct NetworkPopup {
+    interface: String,
+    ip_address: String,
+    connection_speed: String,
+    is_wifi: bool,
+    signal_dbm: Option<i32>,
+}
+
+impl NetworkPopup {
+    fn new(snap: &NetworkSnapshot) -> Self {
+        let connection_speed = if snap.is_connected && !snap.is_wireless {
+            // Read link speed from sysfs (returns Mb/s as a number).
+            let speed_path = format!("/sys/class/net/{}/speed", snap.interface_name);
+            std::fs::read_to_string(&speed_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .map(|mbps| {
+                    if mbps >= 1000 {
+                        format!("{} Gbps", mbps / 1000)
+                    } else {
+                        format!("{} Mbps", mbps)
+                    }
+                })
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        Self {
+            interface: snap.interface_name.clone(),
+            ip_address: snap.ip_address.clone().unwrap_or_default(),
+            connection_speed,
+            is_wifi: snap.is_wireless,
+            signal_dbm: snap.signal_dbm,
+        }
+    }
+}
+
+impl PopupContent for NetworkPopup {
+    fn desired_size(&self, _theme: &ThemeContext) -> Size {
+        Size::new(260.0, 130.0)
+    }
+
+    fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        let font = &theme.fonts.family;
+        let bold = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(font);
+        let font_size = 13.0;
+        let dim = dim_color(theme.colors.foreground, 0.65);
+        let line_h = 24.0;
+        let mut y = bounds.y;
+
+        // ── Title: interface name + type ──
+        let kind = if self.is_wifi { "WiFi" } else { "Ethernet" };
+        let title = if self.interface.is_empty() {
+            format!("{kind} (disconnected)")
+        } else {
+            format!("{} — {kind}", self.interface)
+        };
+        let title_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+        render_utils::draw_text_centered(canvas, &title, title_rect, bold, font_size, theme.colors.foreground);
+        y += line_h + 4.0;
+
+        // ── IP address ──
+        let ip_label = if self.ip_address.is_empty() {
+            "No IP".to_owned()
+        } else {
+            format!("IP: {}", self.ip_address)
+        };
+        let ip_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+        render_utils::draw_text_centered(canvas, &ip_label, ip_rect, font, font_size, dim);
+        y += line_h;
+
+        // ── Connection speed (wired) or signal strength (WiFi) ──
+        let detail = if self.is_wifi {
+            match self.signal_dbm {
+                Some(dbm) => format!("Signal: {} dBm", dbm),
+                None => "Signal: unknown".to_owned(),
+            }
+        } else {
+            self.connection_speed.clone()
+        };
+        if !detail.is_empty() {
+            let detail_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+            render_utils::draw_text_centered(canvas, &detail, detail_rect, font, font_size, dim);
+            y += line_h;
+        }
+
+        // ── WiFi signal bar indicator ──
+        if self.is_wifi {
+            if let Some(dbm) = self.signal_dbm {
+                let bars = if dbm >= -55 { 4 } else if dbm >= -67 { 3 } else if dbm >= -80 { 2 } else { 1 };
+                let bar_w = 8.0;
+                let bar_gap = 4.0;
+                let total_w = 4.0 * bar_w + 3.0 * bar_gap;
+                let start_x = bounds.x + (bounds.width - total_w) / 2.0;
+                let max_h = 20.0;
+                for i in 0..4_u32 {
+                    let h = max_h * (i as f32 + 1.0) / 4.0;
+                    let bx = start_x + i as f32 * (bar_w + bar_gap);
+                    let by = y + max_h - h;
+                    let color = if (i as i32) < bars { theme.colors.accent } else { dim };
+                    render_utils::fill_rounded_rect(canvas, Rect::new(bx, by, bar_w, h), color, 2.0);
+                }
+            }
+        }
+    }
+
+    fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+        PopupEventResult::Ignored
+    }
+
+    fn update(&mut self) -> bool {
+        false
+    }
+}
+
+fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
+    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
+    [color[0], color[1], color[2], a]
 }
 
 #[cfg(test)]

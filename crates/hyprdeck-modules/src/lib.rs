@@ -5,8 +5,10 @@ pub mod icon_utils;
 pub mod lunar;
 pub mod menu;
 pub mod network;
+pub mod power;
 pub mod render_utils;
 pub mod shell;
+pub mod sound;
 pub mod weather;
 pub mod window_list;
 pub mod workspaces;
@@ -17,7 +19,9 @@ pub use favorites::FavoritesModule;
 pub use lunar::LunarModule;
 pub use menu::MenuModule;
 pub use network::NetworkModule;
+pub use power::PowerModule;
 pub use shell::ShellModule;
+pub use sound::SoundModule;
 pub use weather::WeatherModule;
 pub use window_list::WindowListModule;
 pub use workspaces::WorkspacesModule;
@@ -68,6 +72,14 @@ pub fn create_module(id: &str, config: toml::Value) -> Option<Box<dyn hyprdeck_c
             let cfg = parse_module_config::<window_list::WindowListConfig>(id, config);
             Some(Box::new(WindowListModule::new(cfg)))
         }
+        "sound" => {
+            let cfg = parse_module_config::<sound::SoundConfig>(id, config);
+            Some(Box::new(SoundModule::new(cfg)))
+        }
+        "power" => {
+            let cfg = parse_module_config::<power::PowerConfig>(id, config);
+            Some(Box::new(PowerModule::new(cfg)))
+        }
         unknown => {
             tracing::warn!("Unknown module ID: '{}' — skipping", unknown);
             None
@@ -103,7 +115,9 @@ pub fn builtin_module_ids() -> &'static [&'static str] {
         "lunar",
         "menu_button",
         "network",
+        "power",
         "shell",
+        "sound",
         "weather",
         "window_list",
         "workspaces",
@@ -154,7 +168,7 @@ mod tests {
     #[test]
     fn available_modules_matches_registry() {
         let ids = builtin_module_ids();
-        assert_eq!(ids.len(), 10);
+        assert_eq!(ids.len(), 12);
         for id in ids {
             assert!(
                 create_module(id, empty_config()).is_some(),

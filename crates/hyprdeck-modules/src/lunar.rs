@@ -14,7 +14,7 @@ use fn0rd_lib::moon::calc::{Body, phase_angle, phase_name_for_angle};
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    Rect, Size, ThemeContext, UpdateContext,
+    PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -166,6 +166,24 @@ impl PanelModule for LunarModule {
         EventResult::Ignored
     }
 
+    fn has_popup(&self) -> bool {
+        true
+    }
+
+    fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+        let illumination = {
+            // cos((phase - 0.5) * 2π) maps 0=new(0%) 0.5=full(100%) 1=new(0%)
+            let angle = (self.cached_phase - 0.5) * 2.0 * std::f64::consts::PI;
+            ((angle.cos() + 1.0) / 2.0 * 100.0).round()
+        };
+        Some(Box::new(LunarPopup {
+            phase_emoji: moon_emoji(self.cached_phase).to_owned(),
+            body_name: self.config.body.clone(),
+            illumination_percent: illumination,
+            phase_name: self.cached_name.clone(),
+        }))
+    }
+
     fn config_schema(&self) -> ModuleConfigSchema {
         ModuleConfigSchema {
             module_id: self.id().to_owned(),
@@ -193,6 +211,61 @@ impl PanelModule for LunarModule {
             ],
         }
     }
+}
+
+// ── Lunar popup ───────────────────────────────────────────────────────────────
+
+/// Popup content for the lunar module — shows large emoji, body name, and illumination.
+pub struct LunarPopup {
+    phase_emoji: String,
+    body_name: String,
+    illumination_percent: f64,
+    phase_name: String,
+}
+
+impl PopupContent for LunarPopup {
+    fn desired_size(&self, _theme: &ThemeContext) -> Size {
+        Size::new(220.0, 148.0)
+    }
+
+    fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        let font = &theme.fonts.family;
+
+        // Large moon emoji centred at top
+        let emoji_rect = Rect::new(bounds.x, bounds.y, bounds.width, 64.0);
+        render_utils::draw_text_centered(canvas, &self.phase_emoji, emoji_rect, font, 44.0, theme.colors.foreground);
+
+        // Body name (capitalised)
+        let mut body_display = self.body_name.clone();
+        if let Some(c) = body_display.get_mut(0..1) {
+            c.make_ascii_uppercase();
+        }
+        let name_rect = Rect::new(bounds.x, bounds.y + 68.0, bounds.width, 26.0);
+        render_utils::draw_text_centered(canvas, &body_display, name_rect, font, 16.0, theme.colors.foreground);
+
+        // Phase name (dimmed)
+        let dim = dim_color(theme.colors.foreground, 0.65);
+        let phase_rect = Rect::new(bounds.x, bounds.y + 96.0, bounds.width, 22.0);
+        render_utils::draw_text_centered(canvas, &self.phase_name, phase_rect, font, 13.0, dim);
+
+        // Illumination percentage (dimmed)
+        let illum = format!("{:.0}% illuminated", self.illumination_percent);
+        let illum_rect = Rect::new(bounds.x, bounds.y + 118.0, bounds.width, 22.0);
+        render_utils::draw_text_centered(canvas, &illum, illum_rect, font, 13.0, dim);
+    }
+
+    fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+        PopupEventResult::Ignored
+    }
+
+    fn update(&mut self) -> bool {
+        false
+    }
+}
+
+fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
+    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
+    [color[0], color[1], color[2], a]
 }
 
 #[cfg(test)]

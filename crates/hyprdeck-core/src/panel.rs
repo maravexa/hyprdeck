@@ -422,8 +422,10 @@ impl Panel {
         // Submit buffer to Wayland surface
         self.submit_buffer();
 
-        // Render popup to its own surface if it has been attached and is dirty.
-        if self.popup.dirty && self.popup.layer_surface.is_some() {
+        // Render popup to its own surface if configured, attached, and dirty.
+        // `configured` must be true before we may attach any buffer: the Wayland
+        // protocol requires the compositor's first configure to arrive first.
+        if self.popup.dirty && self.popup.configured && self.popup.layer_surface.is_some() {
             self.popup.frame(&self.theme_ctx);
         }
 

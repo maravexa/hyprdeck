@@ -639,7 +639,9 @@ impl LayerShellHandler for AppState {
         // ── Popup configure ───────────────────────────────────────────────────
         if let Some((output_name, panel_idx)) = popup_target {
             let (w, h) = configure.new_size;
-            info!("Popup configure: {}x{} for panel {} on '{}'", w, h, panel_idx, output_name);
+            info!("Popup configure {}x{} for panel {} on '{}'", w, h, panel_idx, output_name);
+            // SCTK sends ack_configure automatically before invoking this callback.
+            debug!("Popup configure ack'd");
 
             let output = self.app.outputs.get_mut(&output_name).unwrap();
             let panel = &mut output.panels[panel_idx];
@@ -668,7 +670,18 @@ impl LayerShellHandler for AppState {
 
             panel.popup.configured = true;
             panel.popup.dirty = true;
-            debug!("Rendering popup on configure");
+            debug!("Popup marked configured=true, dirty=true");
+            debug!("Popup has content: {}", panel.popup.content.is_some());
+            debug!("Popup has canvas: {}", panel.popup.canvas.is_some());
+            debug!("Popup has layer_surface: {}", panel.popup.layer_surface.is_some());
+            debug!(
+                "render_popup called for panel {} on '{}'",
+                panel_idx, output_name
+            );
+            debug!(
+                "  configured={}, dirty={}",
+                panel.popup.configured, panel.popup.dirty
+            );
             // Borrow panel.theme_ctx and panel.popup separately (different fields).
             panel.popup.frame(&panel.theme_ctx);
             return;

@@ -15,9 +15,9 @@ edge     = "bottom"
 height   = 32
 layout   = "horizontal"
 auto_hide = { mode = "disabled" }
-modules_start  = ["workspaces"]
-modules_center = ["window_list"]
-modules_end    = []
+modules_start  = ["window_list"]
+modules_center = []
+modules_end    = ["workspaces"]
 
 [style]
 background_color = "#2e3436"

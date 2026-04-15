@@ -165,6 +165,7 @@ fn assemble_state(
         active_window,
         monitors,
         windows,
+        focused_monitor: String::new(),
     }
 }
 

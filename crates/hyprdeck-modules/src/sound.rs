@@ -27,20 +27,15 @@ use crate::render_utils;
 // ── Config ────────────────────────────────────────────────────────────────────
 
 /// Which audio backend to use.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioBackend {
     /// Auto-detect: try wpctl → pactl → amixer.
+    #[default]
     Auto,
     Pipewire,
     Pulseaudio,
     Alsa,
-}
-
-impl Default for AudioBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Configuration for the sound module.

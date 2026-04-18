@@ -318,14 +318,14 @@ impl Panel {
                 }
             }
             // Stage 4: warn when a click lands outside every module's bounds.
-            if !hit_any {
-                if matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }) {
-                    tracing::warn!(
-                        "Click at ({:.0}, {:.0}) missed all {} module bound(s)",
-                        pt.x, pt.y,
-                        layout.module_bounds.len()
-                    );
-                }
+            if !hit_any
+                && matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. })
+            {
+                tracing::warn!(
+                    "Click at ({:.0}, {:.0}) missed all {} module bound(s)",
+                    pt.x, pt.y,
+                    layout.module_bounds.len()
+                );
             }
         }
 

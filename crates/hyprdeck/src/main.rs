@@ -27,7 +27,7 @@ use wayland_client::{
 };
 
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton, Rect};
+use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton, PopupEventResult, Rect, dispatch_action};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -52,6 +52,8 @@ struct AppState {
     /// The active Wayland pointer object.  `None` until a seat with pointer
     /// capability is seen.
     pointer: Option<wl_pointer::WlPointer>,
+    /// Path to the Hyprland command socket, used when dispatching actions from popup events.
+    hypr_socket: std::path::PathBuf,
 }
 
 impl AppState {
@@ -257,6 +259,57 @@ impl AppState {
         None
     }
 
+    /// Find the (output_name, panel_index) pair whose popup surface matches the given `wl_surface`.
+    ///
+    /// Used in [`PointerHandler::pointer_frame`] to route pointer events that land
+    /// on a popup overlay surface to the correct panel's popup content.
+    fn find_popup_owner(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> Option<(String, usize)> {
+        let target_id = surface.id();
+        for (output_name, output) in &self.app.outputs {
+            for (panel_idx, panel) in output.panels.iter().enumerate() {
+                if panel.popup.surface_id() == Some(target_id.clone()) {
+                    return Some((output_name.clone(), panel_idx));
+                }
+            }
+        }
+        None
+    }
+
+    /// Dispatch an [`InputEvent`] to the active popup content of the specified panel.
+    ///
+    /// Constructs bounds from the popup's current pixel dimensions and forwards
+    /// the event via [`PopupState::handle_event`].  If the popup returns an
+    /// [`PopupEventResult::Action`], the popup is closed and the action is
+    /// dispatched in a background tokio task.
+    fn dispatch_popup_event(
+        &mut self,
+        output_name: &str,
+        panel_idx: usize,
+        event: InputEvent,
+    ) {
+        let hypr_socket = self.hypr_socket.clone();
+
+        let Some(output) = self.app.outputs.get_mut(output_name) else { return; };
+        let Some(panel) = output.panels.get_mut(panel_idx) else { return; };
+
+        let bounds = Rect::new(0.0, 0.0, panel.popup.width as f32, panel.popup.height as f32);
+
+        let result = panel.popup.handle_event(&event, bounds);
+
+        if let Some(PopupEventResult::Action(action)) = result {
+            info!("Popup action: {:?}", action);
+            panel.popup.close();
+            tokio::spawn(async move {
+                if let Err(e) = dispatch_action(&action, &hypr_socket).await {
+                    warn!("Popup action dispatch failed: {}", e);
+                }
+            });
+        }
+    }
+
     /// Create Wayland layer surfaces for all panels of a newly-added output.
     ///
     /// Panels that already have a surface are skipped.  A `SlotPool` is
@@ -451,6 +504,14 @@ impl PointerHandler for AppState {
                         };
                         let output = self.app.outputs.get_mut(&output_name).unwrap();
                         let _ = output.panels[panel_idx].handle_input(input);
+                    } else if let Some((output_name, panel_idx)) =
+                        self.find_popup_owner(&event.surface)
+                    {
+                        let input = InputEvent::MouseMove {
+                            x: event.position.0 as f32,
+                            y: event.position.1 as f32,
+                        };
+                        self.dispatch_popup_event(&output_name, panel_idx, input);
                     }
                 }
 
@@ -471,7 +532,7 @@ impl PointerHandler for AppState {
                         }
                     };
                     if let Some(mb) = mb {
-                        // ── Stage 2: route to panel ───────────────────────
+                        // ── Stage 2: route to panel or popup ─────────────
                         if let Some((output_name, panel_idx)) =
                             self.find_panel_for_surface(&event.surface)
                         {
@@ -492,6 +553,19 @@ impl PointerHandler for AppState {
                                 r
                             };
                             self.handle_input_result(result, &output_name, panel_idx, qh);
+                        } else if let Some((output_name, panel_idx)) =
+                            self.find_popup_owner(&event.surface)
+                        {
+                            let input = InputEvent::MousePress {
+                                x: event.position.0 as f32,
+                                y: event.position.1 as f32,
+                                button: mb,
+                            };
+                            info!(
+                                "Routing press to popup on output '{}', panel_idx={}",
+                                output_name, panel_idx
+                            );
+                            self.dispatch_popup_event(&output_name, panel_idx, input);
                         } else {
                             warn!(
                                 "POINTER Press: surface {:?} not matched to any panel",
@@ -525,6 +599,15 @@ impl PointerHandler for AppState {
                             };
                             let output = self.app.outputs.get_mut(&output_name).unwrap();
                             let _ = output.panels[panel_idx].handle_input(input);
+                        } else if let Some((output_name, panel_idx)) =
+                            self.find_popup_owner(&event.surface)
+                        {
+                            let input = InputEvent::MouseRelease {
+                                x: event.position.0 as f32,
+                                y: event.position.1 as f32,
+                                button: mb,
+                            };
+                            self.dispatch_popup_event(&output_name, panel_idx, input);
                         }
                     }
                 }
@@ -857,7 +940,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ipc = HyprIpc::connect().await?;
     let hypr_state = ipc.state();
     let mut hypr_rx = ipc.subscribe();
-    let _hypr_socket = ipc.command().socket_path().to_path_buf();
+    let hypr_socket = ipc.command().socket_path().to_path_buf();
     info!("Connected to Hyprland IPC");
 
     // ── 5. Build App state (no outputs yet) ───────────────
@@ -887,6 +970,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         seat_state,
         wl_outputs: HashMap::new(),
         pointer: None,
+        hypr_socket,
     };
 
     // Initial roundtrip: enumerates Wayland outputs (populates wl_outputs).

@@ -5,7 +5,7 @@ use wayland_client::protocol::wl_shm;
 
 use crate::action::Action;
 use crate::autohide::{AnimPhase, AutoHideMode, AutoHideState};
-use crate::geometry::{DisplayGeometry, Edge, Point, Size};
+use crate::geometry::{DisplayGeometry, Edge, Point, Rect, Size};
 use crate::ipc::event::HyprEvent;
 use crate::layout::{LayoutEngine, LayoutResult, ModuleGroups, ModuleSizeProvider};
 use crate::module::{EventResult, InputEvent, MouseButton, PanelModule, ThemeContext, UpdateContext};
@@ -80,12 +80,18 @@ pub enum InputResult {
     Action(Action),
     /// A popup was toggled **open** for the given module.
     ///
+    /// `module_bounds` is the triggering module's rect within the panel's
+    /// output-space coordinate system, used to centre the popup on the module.
+    ///
     /// The binary crate must:
     /// 1. Read `panel.popup.content` to get the desired size.
     /// 2. Create a `Layer::Overlay` surface with the compositor and layer shell.
     /// 3. Call `panel.attach_popup_surface(layer_surface, pool, width, height)`.
     /// 4. Flush the Wayland connection.
-    OpenPopup { module_id: String },
+    OpenPopup {
+        module_id: String,
+        module_bounds: Rect,
+    },
     /// The active popup was toggled **closed**.
     ///
     /// `PopupState::close()` has already been called (which drops the
@@ -291,6 +297,7 @@ impl Panel {
                                 // Toggle opened (or switched to) a new popup.
                                 return InputResult::OpenPopup {
                                     module_id: module_id.clone(),
+                                    module_bounds: *bounds,
                                 };
                             }
                         }

@@ -27,7 +27,7 @@ use wayland_client::{
 };
 
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton};
+use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton, Rect};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -68,10 +68,11 @@ impl AppState {
         output_name: &str,
         panel_idx: usize,
         module_id: &str,
+        module_bounds: Rect,
         qh: &QueueHandle<AppState>,
     ) {
         // ── Read desired size from popup content ──────────────────────────────
-        let (width, height, edge, panel_w, panel_h) = {
+        let (width, height, edge, panel_w, panel_h, output_w, output_h) = {
             let Some(output) = self.app.outputs.get(output_name) else {
                 return;
             };
@@ -83,7 +84,7 @@ impl AppState {
             let size = content.desired_size(&panel.theme_ctx);
             let w = (size.width.ceil() as u32).max(1);
             let h = (size.height.ceil() as u32).max(1);
-            (w, h, panel.edge, panel.surface_width, panel.surface_height)
+            (w, h, panel.edge, panel.surface_width, panel.surface_height, output.width, output.height)
         };
 
         let wl_output = self.wl_outputs.get(output_name).cloned();
@@ -107,31 +108,80 @@ impl AppState {
         // measured from the raw output edge, which is what we want.
         layer.set_exclusive_zone(-1);
 
-        // Anchor and margin place the popup flush against the panel surface.
-        // The margin on the panel-side equals the panel thickness, so the popup
-        // appears just outside the panel rather than overlapping it.
+        // Anchor and margin place the popup flush against the panel surface,
+        // with the popup's cross-axis centre aligned on the triggering module.
+        // Clamp to keep the popup fully on-screen (4px margin from output edge).
+        const EDGE_MARGIN: f32 = 4.0;
         match edge {
-            Edge::Bottom => {
-                layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-                layer.set_margin(0, 0, panel_h as i32, 0);
-            }
             Edge::Top => {
                 layer.set_anchor(Anchor::TOP | Anchor::LEFT);
-                layer.set_margin(panel_h as i32, 0, 0, 0);
+
+                let module_center_x = module_bounds.x + module_bounds.width / 2.0;
+                let mut popup_left = module_center_x - width as f32 / 2.0;
+                let min_left = EDGE_MARGIN;
+                let max_left = (output_w as f32) - width as f32 - EDGE_MARGIN;
+                popup_left = popup_left.clamp(min_left, max_left.max(min_left));
+
+                let margin_top = panel_h as i32;
+                let margin_left = popup_left as i32;
+                info!(
+                    "Popup position: top bar, module_center_x={:.0}, popup_left={:.0}, margin_top={}, margin_left={}",
+                    module_center_x, popup_left, margin_top, margin_left
+                );
+                layer.set_margin(margin_top, 0, 0, margin_left);
+            }
+            Edge::Bottom => {
+                layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+
+                let module_center_x = module_bounds.x + module_bounds.width / 2.0;
+                let mut popup_left = module_center_x - width as f32 / 2.0;
+                let min_left = EDGE_MARGIN;
+                let max_left = (output_w as f32) - width as f32 - EDGE_MARGIN;
+                popup_left = popup_left.clamp(min_left, max_left.max(min_left));
+
+                let margin_bottom = panel_h as i32;
+                let margin_left = popup_left as i32;
+                info!(
+                    "Popup position: bottom bar, popup_left={:.0}, margin_bottom={}, margin_left={}",
+                    popup_left, margin_bottom, margin_left
+                );
+                layer.set_margin(0, 0, margin_bottom, margin_left);
             }
             Edge::Left => {
                 layer.set_anchor(Anchor::LEFT | Anchor::TOP);
-                layer.set_margin(0, 0, 0, panel_w as i32);
+
+                let module_center_y = module_bounds.y + module_bounds.height / 2.0;
+                let mut popup_top = module_center_y - height as f32 / 2.0;
+                let min_top = EDGE_MARGIN;
+                let max_top = (output_h as f32) - height as f32 - EDGE_MARGIN;
+                popup_top = popup_top.clamp(min_top, max_top.max(min_top));
+
+                let margin_left = panel_w as i32;
+                let margin_top = popup_top as i32;
+                info!(
+                    "Popup position: left bar, popup_top={:.0}, margin_top={}, margin_left={}",
+                    popup_top, margin_top, margin_left
+                );
+                layer.set_margin(margin_top, 0, 0, margin_left);
             }
             Edge::Right => {
                 layer.set_anchor(Anchor::RIGHT | Anchor::TOP);
-                layer.set_margin(0, panel_w as i32, 0, 0);
+
+                let module_center_y = module_bounds.y + module_bounds.height / 2.0;
+                let mut popup_top = module_center_y - height as f32 / 2.0;
+                let min_top = EDGE_MARGIN;
+                let max_top = (output_h as f32) - height as f32 - EDGE_MARGIN;
+                popup_top = popup_top.clamp(min_top, max_top.max(min_top));
+
+                let margin_right = panel_w as i32;
+                let margin_top = popup_top as i32;
+                info!(
+                    "Popup position: right bar, popup_top={:.0}, margin_top={}, margin_right={}",
+                    popup_top, margin_top, margin_right
+                );
+                layer.set_margin(margin_top, margin_right, 0, 0);
             }
         }
-        info!(
-            "Popup positioning: edge={:?}, anchor+margin: panel_w={} panel_h={}",
-            edge, panel_w, panel_h
-        );
 
         // Initial empty commit → compositor sends configure.
         layer.commit();
@@ -168,11 +218,12 @@ impl AppState {
         qh: &QueueHandle<AppState>,
     ) {
         match result {
-            InputResult::OpenPopup { module_id } => {
+            InputResult::OpenPopup { module_id, module_bounds } => {
                 self.create_popup_surface_for_panel(
                     output_name,
                     panel_idx,
                     &module_id,
+                    module_bounds,
                     qh,
                 );
             }

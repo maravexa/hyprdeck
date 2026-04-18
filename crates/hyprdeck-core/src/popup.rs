@@ -242,6 +242,8 @@ impl PopupState {
 
         if let (Some(canvas), Some(content)) = (self.canvas.as_mut(), self.content.as_ref()) {
             canvas.clear();
+            let bg = theme.colors.background;
+            canvas.fill_rounded_rect(bounds, [bg[0], bg[1], bg[2], 255], theme.border_radius);
             content.render(canvas.pixmap_mut(), theme, bounds);
         }
 

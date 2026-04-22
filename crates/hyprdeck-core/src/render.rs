@@ -211,6 +211,48 @@ impl Canvas {
         );
     }
 
+    /// Draw a moon phase circle with a terminator curve.
+    ///
+    /// `fraction`: 0.0 = new moon (fully dark), 0.5 = full moon (fully lit), 1.0 = new moon again.
+    /// The moon is centered within `bounds` using the smaller dimension as diameter.
+    pub fn draw_moon_phase(
+        &mut self,
+        bounds: Rect,
+        fraction: f64,
+        lit_color: Color,
+        dark_color: Color,
+    ) {
+        let cx = bounds.x + bounds.width / 2.0;
+        let cy = bounds.y + bounds.height / 2.0;
+        let radius = (bounds.width.min(bounds.height) / 2.0) - 1.0;
+
+        if radius <= 0.0 {
+            return;
+        }
+
+        self.fill_circle(crate::geometry::Point::new(cx, cy), radius, dark_color);
+
+        let phase = fraction.rem_euclid(1.0) as f32;
+        let terminator_x = if phase <= 0.5 {
+            radius * (1.0 - phase * 4.0).max(-1.0)
+        } else {
+            radius * ((phase - 0.5) * 4.0 - 1.0).min(1.0)
+        };
+
+        if let Some(path) = build_lit_path(cx, cy, radius, terminator_x, phase) {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(lit_color[0], lit_color[1], lit_color[2], lit_color[3]);
+            paint.anti_alias = true;
+            self.pixmap.fill_path(
+                &path,
+                &paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+
     // ── Image Drawing ──────────────────────────────────────
 
     /// Draw an RGBA image scaled to fit within the given rect.
@@ -729,6 +771,123 @@ fn alpha_blend_pixel(
     data[idx + 1] = (out_g * 255.0 + 0.5) as u8;
     data[idx + 2] = (out_b * 255.0 + 0.5) as u8;
     data[idx + 3] = (out_a * 255.0 + 0.5) as u8;
+}
+
+// ── Moon phase path builder ───────────────────────────────────────────────────
+
+/// Build the lit portion of a moon phase as a closed path.
+///
+/// The lit area is bounded by a semicircular limb arc on the lit side and an
+/// elliptical terminator arc. `terminator_x` is the x-radius of the terminator
+/// ellipse: +radius aligns it with the limb (nothing lit), -radius places it at
+/// the opposite limb (fully lit), 0 is a straight vertical line (quarter phase).
+fn build_lit_path(
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    terminator_x: f32,
+    phase: f32,
+) -> Option<tiny_skia::Path> {
+    let mut pb = PathBuilder::new();
+    let waxing = phase <= 0.5;
+    let segments = 32u32;
+
+    // Start at the top of the moon (shared by both arcs).
+    pb.move_to(cx, cy - radius);
+
+    if waxing {
+        // Lit portion on the RIGHT: trace right limb top→bottom, then terminator bottom→top.
+        for i in 1..=segments {
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
+        }
+        for i in (0..=segments).rev() {
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
+        }
+    } else {
+        // Lit portion on the LEFT: trace left limb top→bottom, then terminator bottom→top.
+        for i in 1..=segments {
+            let angle = -std::f32::consts::FRAC_PI_2
+                - std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
+        }
+        for i in (0..=segments).rev() {
+            let angle = -std::f32::consts::FRAC_PI_2
+                - std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
+        }
+    }
+
+    pb.close();
+    pb.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geometry::Rect;
+
+    fn term(radius: f32, phase: f32) -> f32 {
+        if phase <= 0.5 {
+            radius * (1.0 - phase * 4.0).max(-1.0)
+        } else {
+            radius * ((phase - 0.5) * 4.0 - 1.0).min(1.0)
+        }
+    }
+
+    #[test]
+    fn build_lit_path_returns_some_for_all_phases() {
+        for i in 0..=100 {
+            let phase = i as f32 / 100.0;
+            let t = term(40.0, phase);
+            assert!(
+                build_lit_path(50.0, 50.0, 40.0, t, phase).is_some(),
+                "phase {phase} returned None"
+            );
+        }
+    }
+
+    #[test]
+    fn draw_moon_phase_no_panic_zero_radius() {
+        let mut canvas = Canvas::new(4, 4);
+        // bounds of 2x2 → radius = 0.0 after subtracting 1.0 → early return
+        canvas.draw_moon_phase(
+            Rect::new(1.0, 1.0, 2.0, 2.0),
+            0.25,
+            [255, 255, 255, 255],
+            [30, 30, 30, 100],
+        );
+    }
+
+    #[test]
+    fn draw_moon_phase_no_panic_tiny_bounds() {
+        let mut canvas = Canvas::new(10, 10);
+        canvas.draw_moon_phase(
+            Rect::new(0.0, 0.0, 3.0, 3.0),
+            0.125,
+            [255, 255, 255, 255],
+            [30, 30, 30, 100],
+        );
+    }
+
+    #[test]
+    fn render_moon_phases_to_png() {
+        let lit: Color = [205, 214, 244, 255];
+        let dark: Color = [30, 30, 46, 100];
+        for i in 0..8u32 {
+            let fraction = i as f64 / 8.0;
+            let mut canvas = Canvas::new(100, 100);
+            canvas.fill_rect(Rect::new(0.0, 0.0, 100.0, 100.0), [30, 30, 46, 255]);
+            canvas.draw_moon_phase(Rect::new(10.0, 10.0, 80.0, 80.0), fraction, lit, dark);
+            canvas
+                .pixmap()
+                .save_png(format!("/tmp/moon_phase_{i}.png"))
+                .unwrap();
+        }
+    }
 }
 
 // ── Panel-level rendering ─────────────────────────────────────────────────────

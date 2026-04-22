@@ -11,6 +11,7 @@ pub mod panel;
 pub mod popup;
 pub mod render;
 pub mod theme;
+pub mod widgets;
 
 // Re-export tiny_skia::Pixmap so downstream crates that implement PanelModule
 // can name the type without adding tiny-skia as a direct dependency.

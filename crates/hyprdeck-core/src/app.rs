@@ -338,6 +338,8 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
         .or_else(|| style_def.and_then(|s| s.font_family.clone()))
         .unwrap_or_else(|| "sans-serif".to_owned());
 
+    let mono_font_family = style_def.and_then(|s| s.mono_font_family.clone());
+
     let font_size = config
         .theme_overrides
         .font_size
@@ -370,6 +372,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
             family: font_family,
             size: font_size,
             bold_family: None,
+            mono_family: mono_font_family,
         },
         bar_height: 32,
         padding: Padding {

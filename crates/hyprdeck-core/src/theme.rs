@@ -148,6 +148,8 @@ pub struct StyleDefinition {
     pub separator_color: Option<String>,
     /// Font family name.
     pub font_family: Option<String>,
+    /// Monospace font family name (used by calendar popup and other fixed-width elements).
+    pub mono_font_family: Option<String>,
     /// Base font size in points.
     pub font_size: Option<f32>,
     /// Global corner radius applied to the panel background.

@@ -351,6 +351,7 @@ mod tests {
                 family: "sans-serif".into(),
                 size: 14.0,
                 bold_family: None,
+                mono_family: None,
             },
             padding: Padding {
                 top: 4.0,

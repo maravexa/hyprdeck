@@ -678,6 +678,8 @@ pub struct FontConfig {
     pub size: f32,
     /// Optional separate family for bold text; falls back to `family` if `None`.
     pub bold_family: Option<String>,
+    /// Optional monospace family for fixed-width rendering; falls back to `"monospace"` if `None`.
+    pub mono_family: Option<String>,
 }
 
 /// Inset padding applied inside the panel background, in logical pixels.
@@ -812,6 +814,7 @@ mod tests {
                 family: "sans-serif".into(),
                 size: 13.0,
                 bold_family: None,
+                mono_family: None,
             },
             bar_height: 32,
             padding: Padding {

@@ -88,6 +88,25 @@ pub fn moon_emoji(phase: f64) -> &'static str {
     name.emoji()
 }
 
+/// Return a scalable Unicode geometric symbol representing the moon phase.
+///
+/// Unlike color emoji, these symbols are drawn by the text font at whatever
+/// size cosmic-text is asked for.  0.0 = new moon (dark), 0.5 = full moon (bright).
+pub fn moon_phase_symbol(fraction: f64) -> &'static str {
+    let phase_idx = ((fraction * 8.0).round() as u8) % 8;
+    match phase_idx {
+        0 => "●", // new moon — fully dark
+        1 => "◗", // waxing crescent
+        2 => "◐", // first quarter
+        3 => "◒", // waxing gibbous
+        4 => "○", // full moon — fully bright
+        5 => "◓", // waning gibbous
+        6 => "◑", // last quarter
+        7 => "◖", // waning crescent
+        _ => "●",
+    }
+}
+
 impl PanelModule for LunarModule {
     fn id(&self) -> &str {
         "lunar"
@@ -123,17 +142,27 @@ impl PanelModule for LunarModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let emoji = moon_emoji(self.cached_phase);
-        let emoji_size = (bounds.height * 0.98).floor();
+        tracing::debug!(
+            "Lunar render: bounds=({:.0}×{:.0} @ {:.0},{:.0}), configured_font_size={}",
+            bounds.width,
+            bounds.height,
+            bounds.x,
+            bounds.y,
+            theme.fonts.size
+        );
+
+        let symbol = moon_phase_symbol(self.cached_phase);
+        let icon_size = (bounds.height * 0.85).floor();
+        tracing::debug!("Lunar symbol={:?} icon_size={}", symbol, icon_size);
 
         if self.config.show_label && !self.cached_name.is_empty() {
             let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
             render_utils::draw_text_centered(
                 canvas,
-                emoji,
+                symbol,
                 icon_rect,
                 &theme.fonts.family,
-                emoji_size,
+                icon_size,
                 theme.colors.foreground,
             );
 
@@ -160,10 +189,10 @@ impl PanelModule for LunarModule {
         } else {
             render_utils::draw_text_centered(
                 canvas,
-                emoji,
+                symbol,
                 bounds,
                 &theme.fonts.family,
-                emoji_size,
+                icon_size,
                 theme.colors.foreground,
             );
         }
@@ -186,7 +215,7 @@ impl PanelModule for LunarModule {
             ((angle.cos() + 1.0) / 2.0 * 100.0).round()
         };
         Some(Box::new(LunarPopup {
-            phase_emoji: moon_emoji(self.cached_phase).to_owned(),
+            phase_symbol: moon_phase_symbol(self.cached_phase).to_owned(),
             body_name: self.config.body.clone(),
             illumination_percent: illumination,
             phase_name: self.cached_name.clone(),
@@ -224,9 +253,9 @@ impl PanelModule for LunarModule {
 
 // ── Lunar popup ───────────────────────────────────────────────────────────────
 
-/// Popup content for the lunar module — shows large emoji, body name, and illumination.
+/// Popup content for the lunar module — shows large phase symbol, body name, and illumination.
 pub struct LunarPopup {
-    phase_emoji: String,
+    phase_symbol: String,
     body_name: String,
     illumination_percent: f64,
     phase_name: String,
@@ -240,9 +269,9 @@ impl PopupContent for LunarPopup {
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let font = &theme.fonts.family;
 
-        // Large moon emoji centred at top
-        let emoji_rect = Rect::new(bounds.x, bounds.y, bounds.width, 64.0);
-        render_utils::draw_text_centered(canvas, &self.phase_emoji, emoji_rect, font, 64.0, theme.colors.foreground);
+        // Large phase symbol centred at top — uses geometric Unicode so it scales correctly
+        let symbol_rect = Rect::new(bounds.x, bounds.y, bounds.width, 64.0);
+        render_utils::draw_text_centered(canvas, &self.phase_symbol, symbol_rect, font, 64.0, theme.colors.foreground);
 
         // Body name (capitalised)
         let mut body_display = self.body_name.clone();

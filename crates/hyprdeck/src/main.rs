@@ -278,6 +278,17 @@ impl AppState {
         None
     }
 
+    /// Close every open popup across all outputs and panels.
+    fn close_all_popups(&mut self) {
+        for output in self.app.outputs.values_mut() {
+            for panel in &mut output.panels {
+                if panel.popup.active_module.is_some() {
+                    panel.popup.close();
+                }
+            }
+        }
+    }
+
     /// Dispatch an [`InputEvent`] to the active popup content of the specified panel.
     ///
     /// Constructs bounds from the popup's current pixel dimensions and forwards
@@ -532,7 +543,6 @@ impl PointerHandler for AppState {
                         }
                     };
                     if let Some(mb) = mb {
-                        // ── Stage 2: route to panel or popup ─────────────
                         if let Some((output_name, panel_idx)) =
                             self.find_panel_for_surface(&event.surface)
                         {
@@ -541,17 +551,15 @@ impl PointerHandler for AppState {
                                 y: event.position.1 as f32,
                                 button: mb,
                             };
-                            info!(
-                                "Routing click to panel on output '{}', panel_idx={}",
-                                output_name, panel_idx
-                            );
                             let result = {
                                 let output =
                                     self.app.outputs.get_mut(&output_name).unwrap();
-                                let r = output.panels[panel_idx].handle_input(input);
-                                info!("handle_input returned: {:?}", r);
-                                r
+                                output.panels[panel_idx].handle_input(input)
                             };
+                            // Close any popup that wasn't toggled by this click.
+                            if matches!(result, InputResult::None | InputResult::Action(_)) {
+                                self.close_all_popups();
+                            }
                             self.handle_input_result(result, &output_name, panel_idx, qh);
                         } else if let Some((output_name, panel_idx)) =
                             self.find_popup_owner(&event.surface)
@@ -561,12 +569,10 @@ impl PointerHandler for AppState {
                                 y: event.position.1 as f32,
                                 button: mb,
                             };
-                            info!(
-                                "Routing press to popup on output '{}', panel_idx={}",
-                                output_name, panel_idx
-                            );
                             self.dispatch_popup_event(&output_name, panel_idx, input);
                         } else {
+                            // Click landed on the desktop or an unrelated surface.
+                            self.close_all_popups();
                             warn!(
                                 "POINTER Press: surface {:?} not matched to any panel",
                                 event.surface.id()

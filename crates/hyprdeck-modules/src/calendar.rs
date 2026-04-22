@@ -295,7 +295,6 @@ impl PopupContent for CalendarPopup {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        // Prefer monospace; fall back through bold → regular
         let font = theme
             .fonts
             .bold_family
@@ -303,12 +302,26 @@ impl PopupContent for CalendarPopup {
             .unwrap_or(&theme.fonts.family);
         let font_size = 12.0;
         let line_height = 18.0;
+        // Monospace character width estimate (0.6× font size is typical).
+        let char_width = font_size * 0.6;
 
-        for (i, line) in self.cal_output.lines().enumerate() {
+        let lines: Vec<&str> = self.cal_output.lines().collect();
+        let total_height = lines.len() as f32 * line_height;
+
+        // Width of the widest line — used to center the whole block horizontally
+        // while keeping each line left-aligned within the block (preserves column
+        // alignment of `cal` output).
+        let max_chars = lines.iter().map(|l| l.len()).max().unwrap_or(0) as f32;
+        let block_width = max_chars * char_width;
+
+        let start_x = bounds.x + (bounds.width - block_width) / 2.0;
+        let start_y = bounds.y + (bounds.height - total_height) / 2.0;
+
+        for (i, line) in lines.iter().enumerate() {
             let line_rect = Rect::new(
-                bounds.x,
-                bounds.y + i as f32 * line_height,
-                bounds.width,
+                start_x,
+                start_y + i as f32 * line_height,
+                block_width,
                 line_height,
             );
             render_utils::draw_text(

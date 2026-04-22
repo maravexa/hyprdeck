@@ -755,12 +755,4 @@ pub fn render_panel(
         }
     }
 
-    // Draw separators between modules
-    // Determine axis from layout (horizontal panels use horizontal axis)
-    let axis = if layout.total_size.width >= layout.total_size.height {
-        Axis::Horizontal
-    } else {
-        Axis::Vertical
-    };
-    canvas.draw_layout_separators(layout, axis, &style.separator);
 }

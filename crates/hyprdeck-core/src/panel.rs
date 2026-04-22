@@ -210,8 +210,7 @@ impl Panel {
     ///   should flush the Wayland connection.
     /// - [`InputResult::None`] — event consumed or ignored with no side effects.
     pub fn handle_input(&mut self, event: InputEvent) -> InputResult {
-        // Stage 3: trace entry point so we can confirm the call is reached.
-        tracing::info!("Panel::handle_input called with {:?}", event);
+        tracing::trace!("Panel::handle_input called with {:?}", event);
         tracing::debug!("  last_layout exists: {}", self.last_layout.is_some());
         if let Some(layout) = &self.last_layout {
             tracing::debug!("  module_bounds count: {}", layout.module_bounds.len());
@@ -706,7 +705,7 @@ pub struct ResolvedSeparator {
 impl Default for ResolvedSeparator {
     fn default() -> Self {
         Self {
-            visible: true,
+            visible: false,
             color: [128, 128, 128, 128],
             width: 1.0,
             margin: 4.0,

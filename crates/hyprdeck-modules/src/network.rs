@@ -57,6 +57,8 @@ struct NetworkSnapshot {
     ip_address: Option<String>,
     /// WiFi signal level in dBm (negative).  `None` for wired or unknown.
     signal_dbm: Option<i32>,
+    /// Link speed in Mbps for wired interfaces.  `None` for wireless or unknown.
+    link_speed_mbps: Option<u64>,
 }
 
 // ── Module ────────────────────────────────────────────────────────────────────
@@ -64,7 +66,10 @@ struct NetworkSnapshot {
 /// Runtime state for the network indicator module.
 pub struct NetworkModule {
     config: NetworkConfig,
+    /// Primary interface shown in the bar icon (WiFi preferred, else first wired).
     snapshot: NetworkSnapshot,
+    /// All active interfaces, used by the popup.
+    all_interfaces: Vec<NetworkSnapshot>,
     last_poll: Option<Instant>,
 }
 
@@ -73,6 +78,7 @@ impl NetworkModule {
         NetworkModule {
             config,
             snapshot: NetworkSnapshot::default(),
+            all_interfaces: Vec::new(),
             last_poll: None,
         }
     }
@@ -121,20 +127,27 @@ impl PanelModule for NetworkModule {
         }
         self.last_poll = Some(Instant::now());
 
-        let iface = self
-            .config
-            .interface
-            .as_deref()
-            .map(str::to_owned)
-            .or_else(auto_detect_interface);
+        let new_all = poll_all_active_interfaces();
 
-        let new_snap = match iface {
-            None => NetworkSnapshot::default(),
-            Some(iface) => poll_interface(&iface),
+        // Primary interface: prefer the configured one, else WiFi, else first wired.
+        let new_snap = if let Some(name) = self.config.interface.as_deref() {
+            new_all
+                .iter()
+                .find(|s| s.interface_name == name)
+                .cloned()
+                .unwrap_or_else(|| poll_interface(name))
+        } else {
+            new_all
+                .iter()
+                .find(|s| s.is_wireless)
+                .or_else(|| new_all.first())
+                .cloned()
+                .unwrap_or_default()
         };
 
-        if new_snap != self.snapshot {
+        if new_snap != self.snapshot || new_all != self.all_interfaces {
             self.snapshot = new_snap;
+            self.all_interfaces = new_all;
             true
         } else {
             false
@@ -203,7 +216,7 @@ impl PanelModule for NetworkModule {
 
     fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
         tracing::debug!("{} popup_content called", self.id());
-        Some(Box::new(NetworkPopup::new(&self.snapshot)))
+        Some(Box::new(NetworkPopup::new(&self.all_interfaces)))
     }
 
     fn config_schema(&self) -> ModuleConfigSchema {
@@ -247,33 +260,6 @@ impl PanelModule for NetworkModule {
 
 // ── System polling ────────────────────────────────────────────────────────────
 
-/// Return the first non-loopback interface that has `operstate == up`, preferring
-/// wireless interfaces.
-fn auto_detect_interface() -> Option<String> {
-    let entries = std::fs::read_dir("/sys/class/net").ok()?;
-    let mut wired: Option<String> = None;
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name == "lo" {
-            continue;
-        }
-        let state_path = format!("/sys/class/net/{name}/operstate");
-        let state = std::fs::read_to_string(&state_path).unwrap_or_default();
-        if state.trim() != "up" {
-            continue;
-        }
-        // Prefer wireless
-        let is_wifi = std::path::Path::new(&format!("/sys/class/net/{name}/wireless")).exists();
-        if is_wifi {
-            return Some(name);
-        }
-        if wired.is_none() {
-            wired = Some(name);
-        }
-    }
-    wired
-}
-
 fn poll_interface(iface: &str) -> NetworkSnapshot {
     let state_path = format!("/sys/class/net/{iface}/operstate");
     let is_connected = std::fs::read_to_string(&state_path)
@@ -283,8 +269,12 @@ fn poll_interface(iface: &str) -> NetworkSnapshot {
     let is_wireless = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
 
     let ip_address = get_ip(iface);
-    let signal_dbm = if is_wireless {
-        read_wifi_signal(iface)
+    let signal_dbm = if is_wireless { read_wifi_signal(iface) } else { None };
+
+    let link_speed_mbps = if !is_wireless && is_connected {
+        std::fs::read_to_string(format!("/sys/class/net/{iface}/speed"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
     } else {
         None
     };
@@ -295,7 +285,31 @@ fn poll_interface(iface: &str) -> NetworkSnapshot {
         interface_name: iface.to_owned(),
         ip_address,
         signal_dbm,
+        link_speed_mbps,
     }
+}
+
+/// Return snapshots for every non-loopback interface whose `operstate` is `up`.
+/// WiFi interfaces are sorted first.
+fn poll_all_active_interfaces() -> Vec<NetworkSnapshot> {
+    let entries = match std::fs::read_dir("/sys/class/net") {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut snapshots: Vec<NetworkSnapshot> = entries
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != "lo")
+        .filter(|name| {
+            std::fs::read_to_string(format!("/sys/class/net/{name}/operstate"))
+                .map(|s| s.trim() == "up")
+                .unwrap_or(false)
+        })
+        .map(|name| poll_interface(&name))
+        .collect();
+    // WiFi first, then wired.
+    snapshots.sort_by(|a, b| b.is_wireless.cmp(&a.is_wireless));
+    snapshots
 }
 
 fn get_ip(iface: &str) -> Option<String> {
@@ -463,114 +477,153 @@ fn draw_ethernet_icon(canvas: &mut Pixmap, rect: Rect, color: hyprdeck_core::Col
 
 // ── Network popup ─────────────────────────────────────────────────────────────
 
-/// Popup content for the network module — shows connection details.
-pub struct NetworkPopup {
+/// Per-interface data stored in the popup.
+struct IfaceRow {
     interface: String,
     ip_address: String,
-    connection_speed: String,
     is_wifi: bool,
     signal_dbm: Option<i32>,
+    speed_label: String,
 }
 
-impl NetworkPopup {
-    fn new(snap: &NetworkSnapshot) -> Self {
-        let connection_speed = if snap.is_connected && !snap.is_wireless {
-            // Read link speed from sysfs (returns Mb/s as a number).
-            let speed_path = format!("/sys/class/net/{}/speed", snap.interface_name);
-            std::fs::read_to_string(&speed_path)
-                .ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-                .map(|mbps| {
-                    if mbps >= 1000 {
-                        format!("{} Gbps", mbps / 1000)
-                    } else {
-                        format!("{} Mbps", mbps)
-                    }
-                })
-                .unwrap_or_default()
-        } else {
-            String::new()
+impl IfaceRow {
+    fn from_snapshot(snap: &NetworkSnapshot) -> Self {
+        let speed_label = match snap.link_speed_mbps {
+            Some(mbps) if mbps >= 1000 => format!("{} Gbps", mbps / 1000),
+            Some(mbps) => format!("{mbps} Mbps"),
+            None => String::new(),
         };
-
         Self {
             interface: snap.interface_name.clone(),
             ip_address: snap.ip_address.clone().unwrap_or_default(),
-            connection_speed,
             is_wifi: snap.is_wireless,
             signal_dbm: snap.signal_dbm,
+            speed_label,
         }
     }
 }
 
+/// Popup content for the network module — shows all active interface details.
+pub struct NetworkPopup {
+    rows: Vec<IfaceRow>,
+}
+
+impl NetworkPopup {
+    fn new(interfaces: &[NetworkSnapshot]) -> Self {
+        let rows = if interfaces.is_empty() {
+            // Show a placeholder when nothing is connected.
+            vec![IfaceRow {
+                interface: String::new(),
+                ip_address: String::new(),
+                is_wifi: false,
+                signal_dbm: None,
+                speed_label: String::new(),
+            }]
+        } else {
+            interfaces.iter().map(IfaceRow::from_snapshot).collect()
+        };
+        Self { rows }
+    }
+}
+
+/// Height allocated to each interface section in the popup.
+const IFACE_SECTION_H: f32 = 90.0;
+
 impl PopupContent for NetworkPopup {
     fn desired_size(&self, _theme: &ThemeContext) -> Size {
-        Size::new(260.0, 130.0)
+        let h = (self.rows.len() as f32 * IFACE_SECTION_H).clamp(90.0, 400.0);
+        Size::new(260.0, h)
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let font = &theme.fonts.family;
-        let bold = theme
-            .fonts
-            .bold_family
-            .as_deref()
-            .unwrap_or(font);
+        let bold = theme.fonts.bold_family.as_deref().unwrap_or(font);
         let font_size = 13.0;
         let dim = dim_color(theme.colors.foreground, 0.65);
-        let line_h = 24.0;
-        let mut y = bounds.y;
+        let line_h = 22.0;
 
-        // ── Title: interface name + type ──
-        let kind = if self.is_wifi { "WiFi" } else { "Ethernet" };
-        let title = if self.interface.is_empty() {
-            format!("{kind} (disconnected)")
-        } else {
-            format!("{} — {kind}", self.interface)
-        };
-        let title_rect = Rect::new(bounds.x, y, bounds.width, line_h);
-        render_utils::draw_text_centered(canvas, &title, title_rect, bold, font_size, theme.colors.foreground);
-        y += line_h + 4.0;
-
-        // ── IP address ──
-        let ip_label = if self.ip_address.is_empty() {
-            "No IP".to_owned()
-        } else {
-            format!("IP: {}", self.ip_address)
-        };
-        let ip_rect = Rect::new(bounds.x, y, bounds.width, line_h);
-        render_utils::draw_text_centered(canvas, &ip_label, ip_rect, font, font_size, dim);
-        y += line_h;
-
-        // ── Connection speed (wired) or signal strength (WiFi) ──
-        let detail = if self.is_wifi {
-            match self.signal_dbm {
-                Some(dbm) => format!("Signal: {} dBm", dbm),
-                None => "Signal: unknown".to_owned(),
-            }
-        } else {
-            self.connection_speed.clone()
-        };
-        if !detail.is_empty() {
-            let detail_rect = Rect::new(bounds.x, y, bounds.width, line_h);
-            render_utils::draw_text_centered(canvas, &detail, detail_rect, font, font_size, dim);
-            y += line_h;
+        if self.rows.is_empty() || (self.rows.len() == 1 && self.rows[0].interface.is_empty()) {
+            let msg_rect = Rect::new(bounds.x, bounds.y, bounds.width, bounds.height);
+            render_utils::draw_text_centered(
+                canvas,
+                "No active connections",
+                msg_rect,
+                font,
+                font_size,
+                dim,
+            );
+            return;
         }
 
-        // ── WiFi signal bar indicator ──
-        if self.is_wifi {
-            if let Some(dbm) = self.signal_dbm {
-                let bars = if dbm >= -55 { 4 } else if dbm >= -67 { 3 } else if dbm >= -80 { 2 } else { 1 };
-                let bar_w = 8.0;
-                let bar_gap = 4.0;
-                let total_w = 4.0 * bar_w + 3.0 * bar_gap;
-                let start_x = bounds.x + (bounds.width - total_w) / 2.0;
-                let max_h = 20.0;
-                for i in 0..4_u32 {
-                    let h = max_h * (i as f32 + 1.0) / 4.0;
-                    let bx = start_x + i as f32 * (bar_w + bar_gap);
-                    let by = y + max_h - h;
-                    let color = if (i as i32) < bars { theme.colors.accent } else { dim };
-                    render_utils::fill_rounded_rect(canvas, Rect::new(bx, by, bar_w, h), color, 2.0);
+        for (idx, row) in self.rows.iter().enumerate() {
+            let section_y = bounds.y + idx as f32 * IFACE_SECTION_H;
+
+            // Divider between sections (not before the first).
+            if idx > 0 {
+                render_utils::draw_line(
+                    canvas,
+                    Point::new(bounds.x + 8.0, section_y - 1.0),
+                    Point::new(bounds.x + bounds.width - 8.0, section_y - 1.0),
+                    dim_color(theme.colors.foreground, 0.2),
+                    1.0,
+                );
+            }
+
+            let mut y = section_y + 6.0;
+
+            // Title: "WiFi — wlan0" or "Ethernet — eth0"
+            let kind = if row.is_wifi { "WiFi" } else { "Ethernet" };
+            let title = format!("{kind} — {}", row.interface);
+            let title_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+            render_utils::draw_text_centered(
+                canvas, &title, title_rect, bold, font_size, theme.colors.foreground,
+            );
+            y += line_h;
+
+            // IP address
+            let ip_label = if row.ip_address.is_empty() {
+                "No IP".to_owned()
+            } else {
+                format!("IP: {}", row.ip_address)
+            };
+            let ip_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+            render_utils::draw_text_centered(canvas, &ip_label, ip_rect, font, font_size, dim);
+            y += line_h;
+
+            // Signal (WiFi) or link speed (Ethernet)
+            if row.is_wifi {
+                let sig = match row.signal_dbm {
+                    Some(dbm) => format!("Signal: {dbm} dBm"),
+                    None => "Signal: unknown".to_owned(),
+                };
+                let sig_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+                render_utils::draw_text_centered(canvas, &sig, sig_rect, font, font_size, dim);
+                y += line_h;
+
+                // Signal strength bars
+                if let Some(dbm) = row.signal_dbm {
+                    let bars: i32 =
+                        if dbm >= -55 { 4 } else if dbm >= -67 { 3 } else if dbm >= -80 { 2 } else { 1 };
+                    let bar_w = 8.0_f32;
+                    let bar_gap = 4.0_f32;
+                    let total_w = 4.0 * bar_w + 3.0 * bar_gap;
+                    let start_x = bounds.x + (bounds.width - total_w) / 2.0;
+                    let max_h = 16.0_f32;
+                    for i in 0..4_u32 {
+                        let h = max_h * (i as f32 + 1.0) / 4.0;
+                        let bx = start_x + i as f32 * (bar_w + bar_gap);
+                        let by = y + max_h - h;
+                        let color = if (i as i32) < bars { theme.colors.accent } else { dim };
+                        render_utils::fill_rounded_rect(
+                            canvas, Rect::new(bx, by, bar_w, h), color, 2.0,
+                        );
+                    }
                 }
+            } else if !row.speed_label.is_empty() {
+                let spd_rect = Rect::new(bounds.x, y, bounds.width, line_h);
+                render_utils::draw_text_centered(
+                    canvas, &row.speed_label, spd_rect, font, font_size, dim,
+                );
             }
         }
     }

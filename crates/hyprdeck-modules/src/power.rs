@@ -415,6 +415,7 @@ mod tests {
                 family: "sans-serif".into(),
                 size: 13.0,
                 bold_family: None,
+                mono_family: None,
             },
             padding: Padding::default(),
             border_radius: 4.0,

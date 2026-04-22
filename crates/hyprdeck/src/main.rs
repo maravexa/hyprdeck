@@ -497,6 +497,26 @@ impl PointerHandler for AppState {
                     {
                         let output = self.app.outputs.get_mut(&output_name).unwrap();
                         output.panels[panel_idx].on_cursor_leave();
+                    } else if let Some((output_name, panel_idx)) =
+                        self.find_popup_owner(&event.surface)
+                    {
+                        // Pointer left the popup surface — close unless a drag is active.
+                        let is_dragging = self
+                            .app
+                            .outputs
+                            .get(&output_name)
+                            .and_then(|o| o.panels.get(panel_idx))
+                            .and_then(|p| p.popup.content.as_ref())
+                            .map(|c| c.is_dragging())
+                            .unwrap_or(false);
+                        if !is_dragging {
+                            tracing::debug!("Pointer left popup surface, closing popup");
+                            if let Some(output) = self.app.outputs.get_mut(&output_name) {
+                                if let Some(panel) = output.panels.get_mut(panel_idx) {
+                                    panel.popup.close();
+                                }
+                            }
+                        }
                     }
                 }
 

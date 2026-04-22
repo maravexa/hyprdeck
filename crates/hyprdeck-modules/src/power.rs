@@ -102,22 +102,25 @@ impl PanelModule for PowerModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+        let icon_size = (bounds.height * 0.8).floor();
 
-        // Hover highlight background
         if self.hovered {
             let bg = dim_color(theme.colors.foreground, 0.12);
             render_utils::fill_rounded_rect(canvas, bounds, bg, theme.border_radius);
         }
 
-        // Power symbol ⏻ (U+23FB)
+        let color = if self.hovered {
+            theme.colors.accent
+        } else {
+            theme.colors.foreground
+        };
         render_utils::draw_text_centered(
             canvas,
             "\u{23FB}",
             bounds,
             &theme.fonts.family,
-            font_size,
-            theme.colors.foreground,
+            icon_size,
+            color,
         );
     }
 

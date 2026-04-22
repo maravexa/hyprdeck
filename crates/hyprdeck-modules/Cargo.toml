@@ -10,7 +10,6 @@ chrono            = { workspace = true }
 reqwest           = { workspace = true }
 nix               = { workspace = true }
 freedesktop-icons = { workspace = true }
-fn0rd             = { workspace = true }
 tokio             = { workspace = true }
 tracing           = { workspace = true }
 serde             = { workspace = true }

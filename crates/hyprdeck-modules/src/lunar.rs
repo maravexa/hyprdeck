@@ -1,6 +1,6 @@
 //! Lunar phase display module.
 //!
-//! Uses the `fn0rd` crate for orbital-mechanics phase calculations.
+//! Phase calculations use a built-in synodic-period approximation.
 //! The phase is re-computed at most once per calendar day; intraday updates
 //! are skipped.
 //!
@@ -10,7 +10,105 @@
 use chrono::NaiveDate;
 use serde::Deserialize;
 
-use fn0rd_lib::moon::calc::{Body, phase_angle, phase_name_for_angle};
+// ── Orbital mechanics (built-in approximation) ────────────────────────────────
+
+/// A celestial body whose phase we can approximate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Body {
+    Luna, Phobos, Deimos, Io, Europa, Ganymede, Titan, Triton,
+}
+
+impl Body {
+    pub fn parse(s: &str) -> Option<Body> {
+        match s.to_lowercase().as_str() {
+            "luna" | "moon" => Some(Body::Luna),
+            "phobos"        => Some(Body::Phobos),
+            "deimos"        => Some(Body::Deimos),
+            "io"            => Some(Body::Io),
+            "europa"        => Some(Body::Europa),
+            "ganymede"      => Some(Body::Ganymede),
+            "titan"         => Some(Body::Titan),
+            "triton"        => Some(Body::Triton),
+            _               => None,
+        }
+    }
+
+    fn orbital_period(self) -> f64 {
+        match self {
+            Body::Luna     => 29.530_59,
+            Body::Phobos   =>  0.318_91,
+            Body::Deimos   =>  1.262_44,
+            Body::Io       =>  1.769_14,
+            Body::Europa   =>  3.551_82,
+            Body::Ganymede =>  7.154_55,
+            Body::Titan    => 15.945_42,
+            Body::Triton   =>  5.876_85,
+        }
+    }
+
+    fn reference_new_moon(self) -> NaiveDate {
+        match self {
+            Body::Luna => NaiveDate::from_ymd_opt(2000, 1, 6).unwrap(),
+            _          => NaiveDate::from_ymd_opt(2000, 1, 1).unwrap(),
+        }
+    }
+
+    fn retrograde(self) -> bool {
+        matches!(self, Body::Triton)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PhaseName {
+    NewMoon, WaxingCrescent, FirstQuarter, WaxingGibbous,
+    FullMoon, WaningGibbous, LastQuarter, WaningCrescent,
+}
+
+impl PhaseName {
+    fn label(self) -> &'static str {
+        match self {
+            PhaseName::NewMoon        => "New Moon",
+            PhaseName::WaxingCrescent => "Waxing Crescent",
+            PhaseName::FirstQuarter   => "First Quarter",
+            PhaseName::WaxingGibbous  => "Waxing Gibbous",
+            PhaseName::FullMoon       => "Full Moon",
+            PhaseName::WaningGibbous  => "Waning Gibbous",
+            PhaseName::LastQuarter    => "Last Quarter",
+            PhaseName::WaningCrescent => "Waning Crescent",
+        }
+    }
+
+    fn emoji(self) -> &'static str {
+        match self {
+            PhaseName::NewMoon        => "🌑",
+            PhaseName::WaxingCrescent => "🌒",
+            PhaseName::FirstQuarter   => "🌓",
+            PhaseName::WaxingGibbous  => "🌔",
+            PhaseName::FullMoon       => "🌕",
+            PhaseName::WaningGibbous  => "🌖",
+            PhaseName::LastQuarter    => "🌗",
+            PhaseName::WaningCrescent => "🌘",
+        }
+    }
+}
+
+fn phase_angle(body: Body, target: NaiveDate) -> f64 {
+    let days = (target - body.reference_new_moon()).num_days() as f64;
+    let raw = days.rem_euclid(body.orbital_period()) / body.orbital_period();
+    if body.retrograde() { (1.0 - raw).rem_euclid(1.0) } else { raw }
+}
+
+fn phase_name_for_angle(angle: f64) -> PhaseName {
+    let a = angle.rem_euclid(1.0);
+    if !(0.03..0.97).contains(&a) { PhaseName::NewMoon }
+    else if a < 0.22              { PhaseName::WaxingCrescent }
+    else if a < 0.28              { PhaseName::FirstQuarter }
+    else if a < 0.47              { PhaseName::WaxingGibbous }
+    else if a < 0.53              { PhaseName::FullMoon }
+    else if a < 0.72              { PhaseName::WaningGibbous }
+    else if a < 0.78              { PhaseName::LastQuarter }
+    else                          { PhaseName::WaningCrescent }
+}
 
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
@@ -32,7 +130,7 @@ pub enum LunarRenderMode {
     Canvas,  // tiny-skia drawn (default, always works)
     Icons,   // pre-rendered PNG set from theme (future)
     Emoji,   // Unicode emoji fallback (future)
-    Ascii,   // ASCII art via fn0rd (future)
+    Ascii,   // ASCII art (future)
 }
 
 /// Configuration for the lunar phase display module.
@@ -41,8 +139,8 @@ pub struct LunarConfig {
     /// Show the phase name as text next to the icon.
     #[serde(default)]
     pub show_label: bool,
-    /// Celestial body to track.  Accepts any name accepted by `fn0rd::moon::calc::Body::parse`,
-    /// e.g. "luna", "phobos".  Defaults to "luna".
+    /// Celestial body to track.  Accepts "luna", "phobos", "deimos", "io",
+    /// "europa", "ganymede", "titan", or "triton".  Defaults to "luna".
     #[serde(default = "default_body")]
     pub body: String,
     /// Calendar locale for phase names (BCP-47 tag, e.g. "en", "zh-TW").
@@ -84,7 +182,7 @@ impl LunarModule {
         }
     }
 
-    /// Resolve the configured body string to a `fn0rd` `Body`.  Falls back to
+    /// Resolve the configured body string to a `Body`.  Falls back to
     /// `Body::Luna` if the name is unrecognised, logging a warning once.
     fn resolve_body(name: &str) -> Body {
         Body::parse(name).unwrap_or_else(|| {
@@ -309,7 +407,7 @@ mod tests {
 
     #[test]
     fn luna_reference_new_moon() {
-        // Jan 6, 2000 is the reference new-moon date in fn0rd.
+        // Jan 6, 2000 is the reference new-moon date for Luna.
         let phase = phase_angle(Body::Luna, date(2000, 1, 6));
         assert!(
             !(0.05..=0.95).contains(&phase),

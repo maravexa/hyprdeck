@@ -124,7 +124,7 @@ impl PanelModule for LunarModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let emoji = moon_emoji(self.cached_phase);
-        let emoji_size = (bounds.height * 0.85).floor();
+        let emoji_size = (bounds.height * 0.98).floor();
 
         if self.config.show_label && !self.cached_name.is_empty() {
             let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
@@ -242,7 +242,7 @@ impl PopupContent for LunarPopup {
 
         // Large moon emoji centred at top
         let emoji_rect = Rect::new(bounds.x, bounds.y, bounds.width, 64.0);
-        render_utils::draw_text_centered(canvas, &self.phase_emoji, emoji_rect, font, 44.0, theme.colors.foreground);
+        render_utils::draw_text_centered(canvas, &self.phase_emoji, emoji_rect, font, 64.0, theme.colors.foreground);
 
         // Body name (capitalised)
         let mut body_display = self.body_name.clone();

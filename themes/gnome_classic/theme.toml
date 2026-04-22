@@ -3,7 +3,7 @@ description = "Traditional GNOME 2 layout with top and bottom panels"
 
 [[panels]]
 edge     = "top"
-height   = 28
+height   = 34
 layout   = "horizontal"
 auto_hide = { mode = "disabled" }
 modules_start  = ["menu_button"]
@@ -18,7 +18,7 @@ inactive_foreground = "#eeeeec"
 
 [[panels]]
 edge     = "bottom"
-height   = 32
+height   = 34
 layout   = "horizontal"
 auto_hide = { mode = "disabled" }
 modules_start  = ["window_list"]

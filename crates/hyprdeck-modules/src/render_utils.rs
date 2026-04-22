@@ -91,6 +91,42 @@ pub fn fill_circle(pixmap: &mut Pixmap, center: Point, radius: f32, color: Color
     );
 }
 
+/// Draw a moon phase circle with a terminator curve onto a `Pixmap`.
+///
+/// `fraction`: 0.0 = new moon (fully dark), 0.5 = full moon (fully lit), 1.0 = new moon again.
+/// The moon is centered within `bounds` using the smaller dimension as diameter.
+pub fn draw_moon_phase(
+    pixmap: &mut Pixmap,
+    bounds: hyprdeck_core::Rect,
+    fraction: f64,
+    lit_color: Color,
+    dark_color: Color,
+) {
+    let cx = bounds.x + bounds.width / 2.0;
+    let cy = bounds.y + bounds.height / 2.0;
+    let radius = (bounds.width.min(bounds.height) / 2.0) - 1.0;
+
+    if radius <= 0.0 {
+        return;
+    }
+
+    fill_circle(pixmap, Point::new(cx, cy), radius, dark_color);
+
+    let phase = fraction.rem_euclid(1.0) as f32;
+    let terminator_x = if phase <= 0.5 {
+        radius * (1.0 - phase * 4.0).max(-1.0)
+    } else {
+        radius * ((phase - 0.5) * 4.0 - 1.0).min(1.0)
+    };
+
+    if let Some(path) = build_moon_lit_path(cx, cy, radius, terminator_x, phase) {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(lit_color[0], lit_color[1], lit_color[2], lit_color[3]);
+        paint.anti_alias = true;
+        pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
 /// Stroke a line between two points.
 pub fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, color: Color, width: f32) {
     let mut pb = PathBuilder::new();
@@ -401,6 +437,47 @@ fn alpha_blend(
     data[idx + 1] = ((sg + dg * inv) * 255.0 + 0.5) as u8;
     data[idx + 2] = ((sb + db * inv) * 255.0 + 0.5) as u8;
     data[idx + 3] = ((src_a + da * inv) * 255.0 + 0.5) as u8;
+}
+
+fn build_moon_lit_path(
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    terminator_x: f32,
+    phase: f32,
+) -> Option<tiny_skia::Path> {
+    let mut pb = PathBuilder::new();
+    let waxing = phase <= 0.5;
+    let segments = 32u32;
+
+    pb.move_to(cx, cy - radius);
+
+    if waxing {
+        for i in 1..=segments {
+            let angle = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
+        }
+        for i in (0..=segments).rev() {
+            let angle = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
+        }
+    } else {
+        for i in 1..=segments {
+            let angle = -std::f32::consts::FRAC_PI_2
+                - std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
+        }
+        for i in (0..=segments).rev() {
+            let angle = -std::f32::consts::FRAC_PI_2
+                - std::f32::consts::PI * (i as f32 / segments as f32);
+            pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
+        }
+    }
+
+    pb.close();
+    pb.finish()
 }
 
 fn rounded_rect_path(rect: &Rect, radius: f32) -> Option<tiny_skia::Path> {

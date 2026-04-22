@@ -21,6 +21,20 @@ use crate::render_utils;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+/// How the moon phase icon is rendered.
+///
+/// Only `Canvas` is implemented for 1.0; the other variants exist as
+/// forward-compatibility hooks for future theme-driven icon sets.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LunarRenderMode {
+    #[default]
+    Canvas,  // tiny-skia drawn (default, always works)
+    Icons,   // pre-rendered PNG set from theme (future)
+    Emoji,   // Unicode emoji fallback (future)
+    Ascii,   // ASCII art via fn0rd (future)
+}
+
 /// Configuration for the lunar phase display module.
 #[derive(Debug, Default, Deserialize)]
 pub struct LunarConfig {
@@ -34,6 +48,9 @@ pub struct LunarConfig {
     /// Calendar locale for phase names (BCP-47 tag, e.g. "en", "zh-TW").
     #[serde(default = "default_locale")]
     pub locale: String,
+    /// Rendering mode for the moon icon.
+    #[serde(default)]
+    pub render_mode: LunarRenderMode,
 }
 
 fn default_body() -> String {
@@ -113,16 +130,13 @@ impl PanelModule for LunarModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        // One emoji glyph (square) plus optional label.
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
-        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
-        let icon_w = font_size + theme.padding.left + theme.padding.right;
-        let label_w = if self.config.show_label && !self.cached_name.is_empty() {
-            render_utils::estimate_text_width(&self.cached_name, font_size) + 4.0 // gap
+        let height = theme.fonts.size * 2.0;
+        if self.config.show_label && !self.cached_name.is_empty() {
+            let text_width = render_utils::estimate_text_width(&self.cached_name, theme.fonts.size);
+            Size::new(height + text_width + 4.0, height)
         } else {
-            0.0
-        };
-        Size::new(icon_w + label_w, h)
+            Size::new(height, height)
+        }
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
@@ -142,59 +156,20 @@ impl PanelModule for LunarModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        tracing::debug!(
-            "Lunar render: bounds=({:.0}×{:.0} @ {:.0},{:.0}), configured_font_size={}",
-            bounds.width,
-            bounds.height,
-            bounds.x,
-            bounds.y,
-            theme.fonts.size
-        );
+        let icon_size = bounds.height - 2.0;
+        let icon_bounds = Rect::new(bounds.x + 1.0, bounds.y + 1.0, icon_size, icon_size);
 
-        let symbol = moon_phase_symbol(self.cached_phase);
-        let icon_size = (bounds.height * 0.85).floor();
-        tracing::debug!("Lunar symbol={:?} icon_size={}", symbol, icon_size);
+        let lit_color = theme.colors.foreground;
+        let dark_color = dim_color(theme.colors.background, 0.3);
+        render_utils::draw_moon_phase(canvas, icon_bounds, self.cached_phase, lit_color, dark_color);
 
         if self.config.show_label && !self.cached_name.is_empty() {
-            let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
-            render_utils::draw_text_centered(
-                canvas,
-                symbol,
-                icon_rect,
-                &theme.fonts.family,
-                icon_size,
-                theme.colors.foreground,
-            );
-
-            let label_rect = Rect::new(
-                bounds.x + bounds.height,
-                bounds.y,
-                bounds.width - bounds.height,
-                bounds.height,
-            );
-            let bold = theme
-                .fonts
-                .bold_family
-                .as_deref()
-                .unwrap_or(&theme.fonts.family);
+            let label_x = bounds.x + icon_size + 4.0;
+            let label_rect =
+                Rect::new(label_x, bounds.y, bounds.width - icon_size - 4.0, bounds.height);
+            let bold = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
             let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-            render_utils::draw_text(
-                canvas,
-                &self.cached_name,
-                label_rect,
-                bold,
-                text_size,
-                theme.colors.foreground,
-            );
-        } else {
-            render_utils::draw_text_centered(
-                canvas,
-                symbol,
-                bounds,
-                &theme.fonts.family,
-                icon_size,
-                theme.colors.foreground,
-            );
+            render_utils::draw_text(canvas, &self.cached_name, label_rect, bold, text_size, theme.colors.foreground);
         }
     }
 
@@ -209,15 +184,14 @@ impl PanelModule for LunarModule {
 
     fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
         tracing::debug!("{} popup_content called", self.id());
-        let illumination = {
-            // cos((phase - 0.5) * 2π) maps 0=new(0%) 0.5=full(100%) 1=new(0%)
+        let illumination_fraction = {
             let angle = (self.cached_phase - 0.5) * 2.0 * std::f64::consts::PI;
-            ((angle.cos() + 1.0) / 2.0 * 100.0).round()
+            (angle.cos() + 1.0) / 2.0
         };
         Some(Box::new(LunarPopup {
-            phase_symbol: moon_phase_symbol(self.cached_phase).to_owned(),
+            phase_fraction: self.cached_phase,
             body_name: self.config.body.clone(),
-            illumination_percent: illumination,
+            illumination_fraction,
             phase_name: self.cached_name.clone(),
         }))
     }
@@ -246,6 +220,15 @@ impl PanelModule for LunarModule {
                         "BCP-47 language tag for phase name localisation (e.g. \"en\", \"zh-TW\").".to_owned(),
                     field_type: ConfigFieldType::Text { default: "en".to_owned() },
                 },
+                ConfigField {
+                    key: "render_mode".to_owned(),
+                    label: "Render mode".to_owned(),
+                    description: "How the moon icon is drawn (canvas, icons, emoji, ascii).".to_owned(),
+                    field_type: ConfigFieldType::Choice {
+                        options: vec!["canvas".to_owned(), "icons".to_owned(), "emoji".to_owned(), "ascii".to_owned()],
+                        default: "canvas".to_owned(),
+                    },
+                },
             ],
         }
     }
@@ -253,43 +236,52 @@ impl PanelModule for LunarModule {
 
 // ── Lunar popup ───────────────────────────────────────────────────────────────
 
-/// Popup content for the lunar module — shows large phase symbol, body name, and illumination.
+/// Popup content for the lunar module — shows canvas-drawn moon, body name, and illumination.
 pub struct LunarPopup {
-    phase_symbol: String,
+    phase_fraction: f64,
     body_name: String,
-    illumination_percent: f64,
+    illumination_fraction: f64,
     phase_name: String,
 }
 
 impl PopupContent for LunarPopup {
     fn desired_size(&self, _theme: &ThemeContext) -> Size {
-        Size::new(220.0, 148.0)
+        Size::new(220.0, 180.0)
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let font = &theme.fonts.family;
+        let moon_size = 80.0;
+        let moon_bounds = Rect::new(
+            bounds.x + (bounds.width - moon_size) / 2.0,
+            bounds.y,
+            moon_size,
+            moon_size,
+        );
+        let lit_color = theme.colors.foreground;
+        let dark_color = dim_color(theme.colors.foreground, 0.15);
+        render_utils::draw_moon_phase(canvas, moon_bounds, self.phase_fraction, lit_color, dark_color);
 
-        // Large phase symbol centred at top — uses geometric Unicode so it scales correctly
-        let symbol_rect = Rect::new(bounds.x, bounds.y, bounds.width, 64.0);
-        render_utils::draw_text_centered(canvas, &self.phase_symbol, symbol_rect, font, 64.0, theme.colors.foreground);
+        let bold = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
+        let font = &theme.fonts.family;
 
         // Body name (capitalised)
         let mut body_display = self.body_name.clone();
         if let Some(c) = body_display.get_mut(0..1) {
             c.make_ascii_uppercase();
         }
-        let name_rect = Rect::new(bounds.x, bounds.y + 68.0, bounds.width, 26.0);
-        render_utils::draw_text_centered(canvas, &body_display, name_rect, font, 16.0, theme.colors.foreground);
+        let name_rect = Rect::new(bounds.x, bounds.y + 88.0, bounds.width, 24.0);
+        render_utils::draw_text_centered(canvas, &body_display, name_rect, bold, 16.0, theme.colors.foreground);
 
         // Phase name (dimmed)
-        let dim = dim_color(theme.colors.foreground, 0.65);
-        let phase_rect = Rect::new(bounds.x, bounds.y + 96.0, bounds.width, 22.0);
-        render_utils::draw_text_centered(canvas, &self.phase_name, phase_rect, font, 13.0, dim);
+        let dim = dim_color(theme.colors.foreground, 0.8);
+        let phase_rect = Rect::new(bounds.x, bounds.y + 112.0, bounds.width, 22.0);
+        render_utils::draw_text_centered(canvas, &self.phase_name, phase_rect, font, 14.0, dim);
 
-        // Illumination percentage (dimmed)
-        let illum = format!("{:.0}% illuminated", self.illumination_percent);
-        let illum_rect = Rect::new(bounds.x, bounds.y + 118.0, bounds.width, 22.0);
-        render_utils::draw_text_centered(canvas, &illum, illum_rect, font, 13.0, dim);
+        // Illumination percentage (more dimmed)
+        let dim2 = dim_color(theme.colors.foreground, 0.6);
+        let illum_text = format!("{:.1}% illuminated", self.illumination_fraction * 100.0);
+        let illum_rect = Rect::new(bounds.x, bounds.y + 134.0, bounds.width, 22.0);
+        render_utils::draw_text_centered(canvas, &illum_text, illum_rect, font, 13.0, dim2);
     }
 
     fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {

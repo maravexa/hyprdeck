@@ -124,42 +124,49 @@ impl PanelModule for LunarModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let emoji = moon_emoji(self.cached_phase);
-        let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-        let icon_rect = Rect::new(
-            bounds.x,
-            bounds.y,
-            font_size + theme.padding.left + theme.padding.right,
-            bounds.height,
-        );
-
-        render_utils::draw_text_centered(
-            canvas,
-            emoji,
-            icon_rect,
-            &theme.fonts.family,
-            font_size,
-            theme.colors.foreground,
-        );
+        let emoji_size = (bounds.height * 0.85).floor();
 
         if self.config.show_label && !self.cached_name.is_empty() {
-            let label_x = icon_rect.x + icon_rect.width + 4.0;
+            let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
+            render_utils::draw_text_centered(
+                canvas,
+                emoji,
+                icon_rect,
+                &theme.fonts.family,
+                emoji_size,
+                theme.colors.foreground,
+            );
+
             let label_rect = Rect::new(
-                label_x,
+                bounds.x + bounds.height,
                 bounds.y,
-                bounds.width - label_x + bounds.x,
+                bounds.width - bounds.height,
                 bounds.height,
             );
+            let bold = theme
+                .fonts
+                .bold_family
+                .as_deref()
+                .unwrap_or(&theme.fonts.family);
+            let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
             render_utils::draw_text(
                 canvas,
                 &self.cached_name,
                 label_rect,
+                bold,
+                text_size,
+                theme.colors.foreground,
+            );
+        } else {
+            render_utils::draw_text_centered(
+                canvas,
+                emoji,
+                bounds,
                 &theme.fonts.family,
-                font_size,
+                emoji_size,
                 theme.colors.foreground,
             );
         }
-        // TODO: future enhancement — draw the moon phase using Canvas primitives
-        // (filled circle + shadow overlay) rather than a Unicode glyph.
     }
 
     fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> EventResult {

@@ -238,11 +238,16 @@ impl PanelModule for WindowListModule {
                 } else {
                     wl_style.inactive_foreground
                 };
+                let font = theme
+                    .fonts
+                    .bold_family
+                    .as_deref()
+                    .unwrap_or(&theme.fonts.family);
                 render_utils::draw_text_ellipsis(
                     canvas,
                     &btn.info.title,
                     text_rect,
-                    &theme.fonts.family,
+                    font,
                     render_utils::effective_font_size(bounds.height, theme.fonts.size),
                     text_color,
                 );

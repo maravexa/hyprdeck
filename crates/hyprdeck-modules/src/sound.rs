@@ -206,24 +206,45 @@ impl PanelModule for SoundModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
         let icon = speaker_icon(self.state.volume_percent, self.state.muted);
-
-        let display = if self.state.backend_name.is_empty() {
-            // No backend detected yet — show a placeholder
-            format!("{icon} --")
-        } else {
-            format!("{icon} {}%", self.state.volume_percent)
-        };
-
+        let icon_size = (bounds.height * 0.8).floor();
+        let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
         render_utils::draw_text_centered(
             canvas,
-            &display,
-            bounds,
+            icon,
+            icon_rect,
             &theme.fonts.family,
-            font_size,
+            icon_size,
             theme.colors.foreground,
         );
+
+        if bounds.width > bounds.height + 20.0 {
+            let text_rect = Rect::new(
+                bounds.x + bounds.height,
+                bounds.y,
+                bounds.width - bounds.height,
+                bounds.height,
+            );
+            let font = theme
+                .fonts
+                .bold_family
+                .as_deref()
+                .unwrap_or(&theme.fonts.family);
+            let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+            let vol_text = if self.state.backend_name.is_empty() {
+                "--".to_owned()
+            } else {
+                format!("{}%", self.state.volume_percent)
+            };
+            render_utils::draw_text_centered(
+                canvas,
+                &vol_text,
+                text_rect,
+                font,
+                text_size,
+                theme.colors.foreground,
+            );
+        }
     }
 
     fn handle_event(&mut self, event: &InputEvent, _bounds: Rect) -> EventResult {
@@ -473,6 +494,10 @@ impl PopupContent for SoundPopup {
 
     fn update(&mut self) -> bool {
         false
+    }
+
+    fn is_dragging(&self) -> bool {
+        self.slider_dragging
     }
 }
 

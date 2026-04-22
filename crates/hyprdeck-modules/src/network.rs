@@ -194,11 +194,16 @@ impl PanelModule for NetworkModule {
             } else {
                 &self.snapshot.interface_name
             };
+            let font = theme
+                .fonts
+                .bold_family
+                .as_deref()
+                .unwrap_or(&theme.fonts.family);
             render_utils::draw_text(
                 canvas,
                 label,
                 label_rect,
-                &theme.fonts.family,
+                font,
                 icon_dim,
                 active,
             );

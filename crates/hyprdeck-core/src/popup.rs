@@ -58,6 +58,12 @@ pub trait PopupContent: Send {
 
     /// Advance popup state by one tick. Returns `true` if a redraw is needed.
     fn update(&mut self) -> bool;
+
+    /// Whether the popup is in an active drag state (e.g., slider being dragged).
+    /// Prevents premature close when the pointer briefly leaves the popup bounds.
+    fn is_dragging(&self) -> bool {
+        false
+    }
 }
 
 // ── PopupState ─────────────────────────────────────────────────────────────────

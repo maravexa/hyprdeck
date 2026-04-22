@@ -151,11 +151,16 @@ impl PanelModule for MenuModule {
         // Draw label.
         if !self.config.label.is_empty() {
             let label_rect = Rect::new(x, bounds.y, bounds.x + bounds.width - x, bounds.height);
+            let font = theme
+                .fonts
+                .bold_family
+                .as_deref()
+                .unwrap_or(&theme.fonts.family);
             render_utils::draw_text(
                 canvas,
                 &self.config.label,
                 label_rect,
-                &theme.fonts.family,
+                font,
                 content_h,
                 theme.colors.foreground,
             );

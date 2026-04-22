@@ -160,11 +160,16 @@ impl PanelModule for WeatherModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let font_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+        let font = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
         render_utils::draw_text_centered(
             canvas,
             &self.display_text,
             bounds,
-            &theme.fonts.family,
+            font,
             font_size,
             theme.colors.foreground,
         );

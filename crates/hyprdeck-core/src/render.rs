@@ -607,7 +607,7 @@ impl Canvas {
 /// Returns the larger of the height-derived value and `configured_size`, so the
 /// configured size acts as a floor (text is never shrunk by this function).
 pub fn effective_font_size(available_height: f32, configured_size: f32) -> f32 {
-    let height_derived = (available_height * 0.65).floor();
+    let height_derived = (available_height * 0.75).floor();
     height_derived.max(configured_size)
 }
 

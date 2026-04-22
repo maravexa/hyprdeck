@@ -1,7 +1,7 @@
 //! Calendar module — displays the current date.
 //!
 //! Supports three display systems: Gregorian (default), Discordian, and Custom.
-//! A popup month-grid view is left as a future enhancement (`// TODO` below).
+//! The popup renders a self-contained month/season grid using the table widget.
 
 use chrono::{Datelike as _, Local, NaiveDate};
 use serde::Deserialize;
@@ -10,10 +10,11 @@ use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
     PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
+use hyprdeck_core::widgets::{CellStyle, TableCell, TableConfig, compute_table_size, draw_table};
 
 use crate::render_utils;
 
-// ── Config ────────────────────────────────────────────────────────────────────
+// ── Config ─────────────────────────────────────────────────────────────────────
 
 /// Calendar system used for date display.
 #[derive(Debug, Default, Deserialize)]
@@ -45,7 +46,7 @@ fn default_first_day() -> String {
     "monday".to_owned()
 }
 
-// ── Module ────────────────────────────────────────────────────────────────────
+// ── Module ─────────────────────────────────────────────────────────────────────
 
 /// Runtime state for the calendar / date display module.
 pub struct CalendarModule {
@@ -69,8 +70,7 @@ impl CalendarModule {
         match config.system {
             CalendarSystem::Gregorian => {
                 if let Some(fmt) = &config.date_format {
-                    // Use the custom strftime format via chrono.
-                    let dt = Local::now(); // approximate — date is correct, time irrelevant
+                    let dt = Local::now();
                     dt.format(fmt).to_string()
                 } else {
                     date.format("%A, %B %-d, %Y").to_string()
@@ -78,8 +78,6 @@ impl CalendarModule {
             }
             CalendarSystem::Discordian => to_discordian(date),
             CalendarSystem::Custom => {
-                // Custom system uses the date_format if provided, otherwise falls
-                // back to a short ISO date.
                 if let Some(fmt) = &config.date_format {
                     let dt = Local::now();
                     dt.format(fmt).to_string()
@@ -91,7 +89,7 @@ impl CalendarModule {
     }
 }
 
-// ── Discordian calendar ───────────────────────────────────────────────────────
+// ── Discordian calendar (display string) ───────────────────────────────────────
 
 fn is_leap_year(year: i32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
@@ -101,35 +99,20 @@ fn is_leap_year(year: i32) -> bool {
 ///
 /// Reference: <https://en.wikipedia.org/wiki/Discordian_calendar>
 fn to_discordian(date: NaiveDate) -> String {
-    let year = date.year() + 1166; // Year of Our Lady of Discord offset
-    let doy = date.ordinal() as i32; // 1-based
+    let year = date.year() + 1166;
+    let doy = date.ordinal() as i32;
     let leap = is_leap_year(date.year());
 
-    // St. Tib's Day: intercalary day on Gregorian Feb 29.
     if leap && date.month() == 2 && date.day() == 29 {
         return format!("St. Tib's Day, YOLD {year}");
     }
 
-    // After St. Tib's Day on a leap year, shift back one day so that the
-    // 73-day season arithmetic stays correct.
     let doy = if leap && doy > 60 { doy - 1 } else { doy };
 
-    const SEASONS: [&str; 5] = [
-        "Chaos",
-        "Discord",
-        "Confusion",
-        "Bureaucracy",
-        "The Aftermath",
-    ];
-    const DAYS: [&str; 5] = [
-        "Sweetmorn",
-        "Boomtime",
-        "Pungenday",
-        "Prickle-Prickle",
-        "Setting Orange",
-    ];
+    const SEASONS: [&str; 5] = ["Chaos", "Discord", "Confusion", "Bureaucracy", "The Aftermath"];
+    const DAYS: [&str; 5] = ["Sweetmorn", "Boomtime", "Pungenday", "Prickle-Prickle", "Setting Orange"];
 
-    let idx = doy - 1; // 0-based
+    let idx = doy - 1;
     let season = SEASONS[(idx / 73) as usize];
     let season_day = (idx % 73) + 1;
     let weekday = DAYS[(idx % 5) as usize];
@@ -247,137 +230,224 @@ impl PanelModule for CalendarModule {
     }
 }
 
-// ── Calendar popup ────────────────────────────────────────────────────────────
+// ── Gregorian calendar data ────────────────────────────────────────────────────
 
-/// Popup content for the calendar module — renders `cal` output as a month grid.
+fn gregorian_month_table(year: i32, month: u32, today: Option<u32>) -> (TableConfig, Vec<Vec<TableCell>>) {
+    let config = TableConfig {
+        columns: 7,
+        column_headers: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        title: Some(format!("{} {}", gregorian_month_name(month), year)),
+        cell_width: 32.0,
+        cell_height: 26.0,
+        title_height: 30.0,
+        header_height: 24.0,
+        cell_font_size: 13.0,
+        header_font_size: 11.0,
+        title_font_size: 14.0,
+        highlight_radius: 4.0,
+    };
+
+    let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let first_weekday = first_day.weekday().num_days_from_sunday() as usize;
+    let days_in_month = days_in_gregorian_month(year, month);
+
+    let mut rows: Vec<Vec<TableCell>> = Vec::new();
+    let mut current_row: Vec<TableCell> = Vec::new();
+
+    // Leading blanks
+    for _ in 0..first_weekday {
+        current_row.push(TableCell::default());
+    }
+
+    // Day cells
+    for day in 1..=days_in_month {
+        let style = if today == Some(day) {
+            CellStyle::Highlighted
+        } else {
+            CellStyle::Normal
+        };
+        current_row.push(TableCell { text: day.to_string(), style });
+        if current_row.len() == 7 {
+            rows.push(current_row);
+            current_row = Vec::new();
+        }
+    }
+
+    // Trailing blanks to fill the last row
+    if !current_row.is_empty() {
+        while current_row.len() < 7 {
+            current_row.push(TableCell::default());
+        }
+        rows.push(current_row);
+    }
+
+    (config, rows)
+}
+
+fn days_in_gregorian_month(year: i32, month: u32) -> u32 {
+    let next = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    };
+    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    next.unwrap().signed_duration_since(first).num_days() as u32
+}
+
+fn gregorian_month_name(month: u32) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "Unknown",
+    }
+}
+
+// ── Discordian calendar data ───────────────────────────────────────────────────
+
+const DISCORDIAN_SEASONS: [&str; 5] =
+    ["Chaos", "Discord", "Confusion", "Bureaucracy", "The Aftermath"];
+
+const DISCORDIAN_WEEKDAYS: [&str; 5] = ["SM", "BT", "PD", "PP", "SO"];
+
+fn discordian_season_table(
+    year: i32,
+    season_index: usize,
+    today_season_day: Option<u32>,
+) -> (TableConfig, Vec<Vec<TableCell>>) {
+    let yold = year + 1166;
+
+    let config = TableConfig {
+        columns: 5,
+        column_headers: DISCORDIAN_WEEKDAYS.iter().map(|s| s.to_string()).collect(),
+        title: Some(format!("{}, YOLD {}", DISCORDIAN_SEASONS[season_index], yold)),
+        cell_width: 38.0,
+        cell_height: 26.0,
+        title_height: 30.0,
+        header_height: 24.0,
+        cell_font_size: 13.0,
+        header_font_size: 11.0,
+        title_font_size: 14.0,
+        highlight_radius: 4.0,
+    };
+
+    let mut rows: Vec<Vec<TableCell>> = Vec::new();
+    let mut current_row: Vec<TableCell> = Vec::new();
+
+    for day in 1..=73u32 {
+        let style = if today_season_day == Some(day) {
+            CellStyle::Highlighted
+        } else {
+            CellStyle::Normal
+        };
+        current_row.push(TableCell { text: day.to_string(), style });
+        if current_row.len() == 5 {
+            rows.push(current_row);
+            current_row = Vec::new();
+        }
+    }
+
+    // Trailing blanks (73 = 14×5 + 3, so last row has 3 days + 2 blanks)
+    if !current_row.is_empty() {
+        while current_row.len() < 5 {
+            current_row.push(TableCell::default());
+        }
+        rows.push(current_row);
+    }
+
+    (config, rows)
+}
+
+/// Compute the current Discordian season index (0–4) and day within that season (1–73).
+///
+/// On St. Tib's Day (Feb 29 of a leap year) returns (0, 59) as a best-effort
+/// approximation — the intercalary day sits between Chaos 59 and Chaos 60.
+fn gregorian_to_discordian_season(date: NaiveDate) -> (usize, u32) {
+    let doy = date.ordinal(); // 1-based
+    let leap = is_leap_year(date.year());
+
+    if leap && date.month() == 2 && date.day() == 29 {
+        return (0, 59);
+    }
+
+    let doy = if leap && doy > 60 { doy - 1 } else { doy };
+
+    let season_index = ((doy - 1) / 73) as usize;
+    let season_day = ((doy - 1) % 73) + 1;
+    (season_index, season_day)
+}
+
+// ── Calendar popup ─────────────────────────────────────────────────────────────
+
+/// Popup content for the calendar module — renders a self-contained grid using the table widget.
 pub struct CalendarPopup {
-    cal_output: String,
-    /// True when the output is from the standard `cal` command (Gregorian).
-    /// Enables today-date highlighting logic that understands `cal`'s format.
-    is_gregorian: bool,
+    config: TableConfig,
+    rows: Vec<Vec<TableCell>>,
 }
 
 impl CalendarPopup {
     pub fn new(system: &CalendarSystem) -> Self {
-        let is_gregorian = matches!(system, CalendarSystem::Gregorian);
-        let cal_output = match system {
-            CalendarSystem::Gregorian => run_cal_command(),
-            CalendarSystem::Discordian => run_command_or_fallback(
-                "fn0rd",
-                &["cal"],
-                "Discordian calendar requires the fn0rd tool.\nInstall it for a full calendar view.",
+        let now = Local::now();
+        let (config, rows) = match system {
+            CalendarSystem::Gregorian => gregorian_month_table(
+                now.year(),
+                now.month(),
+                Some(now.day()),
             ),
-            CalendarSystem::Custom => "Custom calendar view not yet implemented.".into(),
+            CalendarSystem::Discordian => {
+                let date = now.date_naive();
+                let (season_idx, season_day) = gregorian_to_discordian_season(date);
+                discordian_season_table(now.year(), season_idx, Some(season_day))
+            }
+            CalendarSystem::Custom => gregorian_month_table(
+                now.year(),
+                now.month(),
+                Some(now.day()),
+            ),
         };
-        Self { cal_output, is_gregorian }
+        Self { config, rows }
     }
-}
-
-fn run_cal_command() -> String {
-    std::process::Command::new("cal")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_else(|_| "Calendar unavailable.\n(cal not found)".into())
-}
-
-fn run_command_or_fallback(cmd: &str, args: &[&str], fallback: &str) -> String {
-    std::process::Command::new(cmd)
-        .args(args)
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_else(|_| fallback.into())
 }
 
 impl PopupContent for CalendarPopup {
     fn desired_size(&self, _theme: &ThemeContext) -> Size {
-        // cal output is typically ~20 chars wide, 8 lines tall.
-        let lines = self.cal_output.lines().count().max(1) as f32;
-        let max_chars = self
-            .cal_output
-            .lines()
-            .map(|l| l.len())
-            .max()
-            .unwrap_or(20) as f32;
-        // 9px per char (monospace), 18px per line, 24px total padding
-        Size::new(max_chars * 9.0 + 24.0, lines * 18.0 + 24.0)
+        let table_size = compute_table_size(&self.config, self.rows.len());
+        Size::new(table_size.width + 24.0, table_size.height + 24.0)
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        // Use monospace font so `cal` column alignment is preserved.
-        let mono_font = theme
-            .fonts
-            .mono_family
-            .as_deref()
-            .unwrap_or("monospace");
-        let bold_font = theme
-            .fonts
-            .bold_family
-            .as_deref()
-            .unwrap_or(&theme.fonts.family);
+        let bold_font = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
+        let mono_font = theme.fonts.mono_family.as_deref().unwrap_or(&theme.fonts.family);
 
-        let font_size = 12.0;
-        let line_height = 18.0;
-        // Monospace character width is typically ~0.6× the font size.
-        let char_width = font_size * 0.6;
+        let fg = theme.colors.foreground;
+        let header_color = [fg[0], fg[1], fg[2], (fg[3] as f32 * 0.5) as u8];
 
-        let lines: Vec<&str> = self.cal_output.lines().collect();
-        let total_height = lines.len() as f32 * line_height;
-
-        let max_chars = lines.iter().map(|l| l.len()).max().unwrap_or(0) as f32;
-        let block_width = max_chars * char_width;
-
-        // Center the whole block; each line is left-aligned within it to preserve
-        // `cal`'s column alignment.
-        let start_x = bounds.x + (bounds.width - block_width) / 2.0;
-        let start_y = bounds.y + (bounds.height - total_height) / 2.0;
-
-        // Today's day-of-month for highlight (only used for Gregorian `cal` output).
-        let today_day = chrono::Local::now().day();
-        // `cal` right-aligns day numbers in 2-char cells: " 5" or "15".
-        let today_padded = format!("{:>2}", today_day);
-
-        for (line_idx, line) in lines.iter().enumerate() {
-            let line_y = start_y + line_idx as f32 * line_height;
-            let line_rect = Rect::new(start_x, line_y, block_width, line_height);
-
-            // Date lines start at index 2 (0 = month title, 1 = day-of-week header).
-            let is_date_line = self.is_gregorian && line_idx >= 2;
-
-            if is_date_line {
-                // Find today's cell position and draw a highlight rect behind it.
-                let mut search_from = 0usize;
-                while let Some(rel_pos) = line[search_from..].find(&today_padded) {
-                    let abs_pos = search_from + rel_pos;
-                    // Confirm this is a proper 2-char day cell, not part of a longer number.
-                    let before_ok =
-                        abs_pos == 0 || line.as_bytes().get(abs_pos - 1) == Some(&b' ');
-                    let after_ok = abs_pos + 2 >= line.len()
-                        || line.as_bytes().get(abs_pos + 2) == Some(&b' ');
-
-                    if before_ok && after_ok {
-                        let cell_x = start_x + abs_pos as f32 * char_width;
-                        let highlight = Rect::new(
-                            cell_x - 1.0,
-                            line_y + 1.0,
-                            char_width * 2.0 + 2.0,
-                            line_height - 2.0,
-                        );
-                        render_utils::fill_rounded_rect(
-                            canvas,
-                            highlight,
-                            theme.colors.accent,
-                            3.0,
-                        );
-                        break;
-                    }
-                    search_from = abs_pos + 2;
-                }
-            }
-
-            // Draw the line text (bold for month title, monospace for all others).
-            let font = if line_idx == 0 { bold_font } else { mono_font };
-            render_utils::draw_text(canvas, line, line_rect, font, font_size, theme.colors.foreground);
-        }
+        draw_table(
+            canvas,
+            bounds,
+            &self.config,
+            &self.rows,
+            theme.colors.foreground,
+            theme.colors.background,
+            theme.colors.accent,
+            header_color,
+            theme.colors.foreground,
+            &theme.fonts.family,
+            bold_font,
+            mono_font,
+        );
     }
 
     fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
@@ -397,48 +467,106 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
 
-    // ── Discordian conversion ─────────────────────────────────────────────────
+    // ── Discordian display string ──────────────────────────────────────────────
 
     #[test]
     fn discordian_jan1_2024() {
-        // Jan 1, 2024 → Sweetmorn, Chaos 1, YOLD 3190
         let s = to_discordian(date(2024, 1, 1));
         assert_eq!(s, "Sweetmorn, Chaos 1, YOLD 3190");
     }
 
     #[test]
     fn discordian_st_tibs_day_2024() {
-        // Feb 29, 2024 (leap year) → St. Tib's Day
         let s = to_discordian(date(2024, 2, 29));
         assert_eq!(s, "St. Tib's Day, YOLD 3190");
     }
 
     #[test]
     fn discordian_dec31_2024() {
-        // Dec 31, 2024 → Setting Orange, The Aftermath 73, YOLD 3190
         let s = to_discordian(date(2024, 12, 31));
         assert_eq!(s, "Setting Orange, The Aftermath 73, YOLD 3190");
     }
 
     #[test]
     fn discordian_non_leap_mar1() {
-        // On a non-leap year, Mar 1 is day 60.  Season: Chaos 60.
-        // Chaos covers days 1-73.  Day 60 → Chaos 60.
-        // Weekday: day 59 (0-based) % 5 = 4 → "Setting Orange"
         let s = to_discordian(date(2023, 3, 1));
         assert!(s.contains("Chaos"), "expected Chaos season, got: {s}");
     }
 
     #[test]
     fn discordian_leap_mar1_shifts_correctly() {
-        // On a leap year, Mar 1 is day 61, but after St. Tib's Day adjustment
-        // it becomes day 60 in the Discordian count.
         let s = to_discordian(date(2024, 3, 1));
-        // Should have the same Discordian day as a non-leap year Mar 1.
         let s_non_leap = to_discordian(date(2023, 3, 1));
-        // The YOLD will differ (+1 for 2024 vs 2023), but season/weekday should match.
         let remove_yold = |s: &str| -> String { s.split(", YOLD").next().unwrap_or("").to_owned() };
         assert_eq!(remove_yold(&s), remove_yold(&s_non_leap));
+    }
+
+    // ── Gregorian table data ───────────────────────────────────────────────────
+
+    #[test]
+    fn gregorian_april_2026() {
+        let (config, rows) = gregorian_month_table(2026, 4, Some(15));
+        assert_eq!(config.columns, 7);
+        assert_eq!(config.title, Some("April 2026".into()));
+        // April 1, 2026 is a Wednesday (index 3 from Sunday)
+        assert_eq!(rows[0][0].text, ""); // Sun
+        assert_eq!(rows[0][1].text, ""); // Mon
+        assert_eq!(rows[0][2].text, ""); // Tue
+        assert_eq!(rows[0][3].text, "1"); // Wed
+        // Day 15 should be highlighted
+        let day15 = rows.iter().flatten().find(|c| c.text == "15").unwrap();
+        assert!(matches!(day15.style, CellStyle::Highlighted));
+    }
+
+    #[test]
+    fn gregorian_february_leap_year() {
+        let (_, rows) = gregorian_month_table(2024, 2, Some(29));
+        let all_days: Vec<&str> = rows
+            .iter()
+            .flatten()
+            .filter(|c| !c.text.is_empty())
+            .map(|c| c.text.as_str())
+            .collect();
+        assert_eq!(all_days.last().unwrap(), &"29");
+    }
+
+    // ── Discordian table data ──────────────────────────────────────────────────
+
+    #[test]
+    fn discordian_season_has_73_days() {
+        let (config, rows) = discordian_season_table(2026, 0, Some(1));
+        assert_eq!(config.columns, 5);
+        let all_days: Vec<&str> = rows
+            .iter()
+            .flatten()
+            .filter(|c| !c.text.is_empty())
+            .map(|c| c.text.as_str())
+            .collect();
+        assert_eq!(all_days.len(), 73);
+        assert_eq!(all_days[0], "1");
+        assert_eq!(all_days[72], "73");
+    }
+
+    #[test]
+    fn gregorian_to_discordian_jan_1() {
+        let (season, day) = gregorian_to_discordian_season(date(2026, 1, 1));
+        assert_eq!(season, 0); // Chaos
+        assert_eq!(day, 1);
+    }
+
+    #[test]
+    fn gregorian_to_discordian_dec_31() {
+        let (season, day) = gregorian_to_discordian_season(date(2026, 12, 31));
+        assert_eq!(season, 4); // The Aftermath
+        assert_eq!(day, 73);
+    }
+
+    #[test]
+    fn days_in_month_correct() {
+        assert_eq!(days_in_gregorian_month(2026, 2), 28);
+        assert_eq!(days_in_gregorian_month(2024, 2), 29); // leap
+        assert_eq!(days_in_gregorian_month(2026, 4), 30);
+        assert_eq!(days_in_gregorian_month(2026, 1), 31);
     }
 
     // ── Module behaviour ──────────────────────────────────────────────────────
@@ -449,16 +577,8 @@ mod tests {
         let state = hyprdeck_core::HyprState::default();
         let t1 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 1, 0, 0, 0).unwrap();
         let t2 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 2, 0, 0, 0).unwrap();
-        let ctx1 = UpdateContext {
-            now: t1,
-            hypr_state: &state,
-            output_name: "",
-        };
-        let ctx2 = UpdateContext {
-            now: t2,
-            hypr_state: &state,
-            output_name: "",
-        };
+        let ctx1 = UpdateContext { now: t1, hypr_state: &state, output_name: "" };
+        let ctx2 = UpdateContext { now: t2, hypr_state: &state, output_name: "" };
         assert!(m.update(&ctx1), "first update should return true");
         assert!(!m.update(&ctx1), "same day should return false");
         assert!(m.update(&ctx2), "next day should return true");

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::os::unix::io::{AsFd, AsRawFd, RawFd};
 use std::time::Duration;
 
+use clap::Parser;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
@@ -918,6 +919,12 @@ delegate_seat!(AppState);
 delegate_pointer!(AppState);
 delegate_registry!(AppState);
 
+// ── CLI ───────────────────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+#[command(name = "hyprdeck", version)]
+struct Cli {}
+
 // ── Wayland fd helper ─────────────────────────────────────────────────────────
 
 /// Wraps a raw Wayland fd for use with `tokio::io::unix::AsyncFd` without
@@ -937,6 +944,9 @@ impl std::os::unix::io::AsRawFd for WaylandFdRef {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // ── 0. Parse CLI (handles --version / -V and exits early) ────────────────
+    let _cli = Cli::parse();
+
     // ── 1. Initialize logging ─────────────────────────────
     tracing_subscriber::fmt()
         .with_env_filter(

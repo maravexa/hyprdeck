@@ -317,9 +317,7 @@ impl PopupContent for PowerPopup {
             InputEvent::MouseMove { x, y } => {
                 let relative_y = y - (bounds.y + 6.0);
                 let index = (relative_y / ITEM_HEIGHT) as usize;
-                let in_bounds = *x >= bounds.x
-                    && *x < bounds.x + bounds.width
-                    && relative_y >= 0.0;
+                let in_bounds = *x >= bounds.x && *x < bounds.x + bounds.width && relative_y >= 0.0;
                 let new_hover = if in_bounds && index < self.items.len() {
                     Some(index)
                 } else {
@@ -338,9 +336,7 @@ impl PopupContent for PowerPopup {
             } => {
                 let relative_y = y - (bounds.y + 6.0);
                 let index = (relative_y / ITEM_HEIGHT) as usize;
-                let in_bounds = *x >= bounds.x
-                    && *x < bounds.x + bounds.width
-                    && relative_y >= 0.0;
+                let in_bounds = *x >= bounds.x && *x < bounds.x + bounds.width && relative_y >= 0.0;
                 if in_bounds && index < self.items.len() {
                     let cmd = &self.items[index].command;
                     let parts: Vec<&str> = cmd.split_whitespace().collect();

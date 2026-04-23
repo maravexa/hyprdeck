@@ -178,7 +178,14 @@ impl PopupContent for ClockPopup {
         // Large HH:MM:SS
         let time_str = now.format("%H:%M:%S").to_string();
         let time_rect = Rect::new(bounds.x, bounds.y, bounds.width, 46.0);
-        render_utils::draw_text_centered(canvas, &time_str, time_rect, bold, 30.0, theme.colors.foreground);
+        render_utils::draw_text_centered(
+            canvas,
+            &time_str,
+            time_rect,
+            bold,
+            30.0,
+            theme.colors.foreground,
+        );
 
         // Timezone label (dimmed)
         let tz_str = now.format("%Z (UTC%:z)").to_string();

@@ -15,41 +15,48 @@ use serde::Deserialize;
 /// A celestial body whose phase we can approximate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Body {
-    Luna, Phobos, Deimos, Io, Europa, Ganymede, Titan, Triton,
+    Luna,
+    Phobos,
+    Deimos,
+    Io,
+    Europa,
+    Ganymede,
+    Titan,
+    Triton,
 }
 
 impl Body {
     pub fn parse(s: &str) -> Option<Body> {
         match s.to_lowercase().as_str() {
             "luna" | "moon" => Some(Body::Luna),
-            "phobos"        => Some(Body::Phobos),
-            "deimos"        => Some(Body::Deimos),
-            "io"            => Some(Body::Io),
-            "europa"        => Some(Body::Europa),
-            "ganymede"      => Some(Body::Ganymede),
-            "titan"         => Some(Body::Titan),
-            "triton"        => Some(Body::Triton),
-            _               => None,
+            "phobos" => Some(Body::Phobos),
+            "deimos" => Some(Body::Deimos),
+            "io" => Some(Body::Io),
+            "europa" => Some(Body::Europa),
+            "ganymede" => Some(Body::Ganymede),
+            "titan" => Some(Body::Titan),
+            "triton" => Some(Body::Triton),
+            _ => None,
         }
     }
 
     fn orbital_period(self) -> f64 {
         match self {
-            Body::Luna     => 29.530_59,
-            Body::Phobos   =>  0.318_91,
-            Body::Deimos   =>  1.262_44,
-            Body::Io       =>  1.769_14,
-            Body::Europa   =>  3.551_82,
-            Body::Ganymede =>  7.154_55,
-            Body::Titan    => 15.945_42,
-            Body::Triton   =>  5.876_85,
+            Body::Luna => 29.530_59,
+            Body::Phobos => 0.318_91,
+            Body::Deimos => 1.262_44,
+            Body::Io => 1.769_14,
+            Body::Europa => 3.551_82,
+            Body::Ganymede => 7.154_55,
+            Body::Titan => 15.945_42,
+            Body::Triton => 5.876_85,
         }
     }
 
     fn reference_new_moon(self) -> NaiveDate {
         match self {
             Body::Luna => NaiveDate::from_ymd_opt(2000, 1, 6).unwrap(),
-            _          => NaiveDate::from_ymd_opt(2000, 1, 1).unwrap(),
+            _ => NaiveDate::from_ymd_opt(2000, 1, 1).unwrap(),
         }
     }
 
@@ -60,33 +67,39 @@ impl Body {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PhaseName {
-    NewMoon, WaxingCrescent, FirstQuarter, WaxingGibbous,
-    FullMoon, WaningGibbous, LastQuarter, WaningCrescent,
+    NewMoon,
+    WaxingCrescent,
+    FirstQuarter,
+    WaxingGibbous,
+    FullMoon,
+    WaningGibbous,
+    LastQuarter,
+    WaningCrescent,
 }
 
 impl PhaseName {
     fn label(self) -> &'static str {
         match self {
-            PhaseName::NewMoon        => "New Moon",
+            PhaseName::NewMoon => "New Moon",
             PhaseName::WaxingCrescent => "Waxing Crescent",
-            PhaseName::FirstQuarter   => "First Quarter",
-            PhaseName::WaxingGibbous  => "Waxing Gibbous",
-            PhaseName::FullMoon       => "Full Moon",
-            PhaseName::WaningGibbous  => "Waning Gibbous",
-            PhaseName::LastQuarter    => "Last Quarter",
+            PhaseName::FirstQuarter => "First Quarter",
+            PhaseName::WaxingGibbous => "Waxing Gibbous",
+            PhaseName::FullMoon => "Full Moon",
+            PhaseName::WaningGibbous => "Waning Gibbous",
+            PhaseName::LastQuarter => "Last Quarter",
             PhaseName::WaningCrescent => "Waning Crescent",
         }
     }
 
     fn emoji(self) -> &'static str {
         match self {
-            PhaseName::NewMoon        => "🌑",
+            PhaseName::NewMoon => "🌑",
             PhaseName::WaxingCrescent => "🌒",
-            PhaseName::FirstQuarter   => "🌓",
-            PhaseName::WaxingGibbous  => "🌔",
-            PhaseName::FullMoon       => "🌕",
-            PhaseName::WaningGibbous  => "🌖",
-            PhaseName::LastQuarter    => "🌗",
+            PhaseName::FirstQuarter => "🌓",
+            PhaseName::WaxingGibbous => "🌔",
+            PhaseName::FullMoon => "🌕",
+            PhaseName::WaningGibbous => "🌖",
+            PhaseName::LastQuarter => "🌗",
             PhaseName::WaningCrescent => "🌘",
         }
     }
@@ -95,24 +108,37 @@ impl PhaseName {
 fn phase_angle(body: Body, target: NaiveDate) -> f64 {
     let days = (target - body.reference_new_moon()).num_days() as f64;
     let raw = days.rem_euclid(body.orbital_period()) / body.orbital_period();
-    if body.retrograde() { (1.0 - raw).rem_euclid(1.0) } else { raw }
+    if body.retrograde() {
+        (1.0 - raw).rem_euclid(1.0)
+    } else {
+        raw
+    }
 }
 
 fn phase_name_for_angle(angle: f64) -> PhaseName {
     let a = angle.rem_euclid(1.0);
-    if !(0.03..0.97).contains(&a) { PhaseName::NewMoon }
-    else if a < 0.22              { PhaseName::WaxingCrescent }
-    else if a < 0.28              { PhaseName::FirstQuarter }
-    else if a < 0.47              { PhaseName::WaxingGibbous }
-    else if a < 0.53              { PhaseName::FullMoon }
-    else if a < 0.72              { PhaseName::WaningGibbous }
-    else if a < 0.78              { PhaseName::LastQuarter }
-    else                          { PhaseName::WaningCrescent }
+    if !(0.03..0.97).contains(&a) {
+        PhaseName::NewMoon
+    } else if a < 0.22 {
+        PhaseName::WaxingCrescent
+    } else if a < 0.28 {
+        PhaseName::FirstQuarter
+    } else if a < 0.47 {
+        PhaseName::WaxingGibbous
+    } else if a < 0.53 {
+        PhaseName::FullMoon
+    } else if a < 0.72 {
+        PhaseName::WaningGibbous
+    } else if a < 0.78 {
+        PhaseName::LastQuarter
+    } else {
+        PhaseName::WaningCrescent
+    }
 }
 
 use hyprdeck_core::{
-    ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
+    ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
+    PanelModule, Pixmap, PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -127,10 +153,10 @@ use crate::render_utils;
 #[serde(rename_all = "lowercase")]
 pub enum LunarRenderMode {
     #[default]
-    Canvas,  // tiny-skia drawn (default, always works)
-    Icons,   // pre-rendered PNG set from theme (future)
-    Emoji,   // Unicode emoji fallback (future)
-    Ascii,   // ASCII art (future)
+    Canvas, // tiny-skia drawn (default, always works)
+    Icons, // pre-rendered PNG set from theme (future)
+    Emoji, // Unicode emoji fallback (future)
+    Ascii, // ASCII art (future)
 }
 
 /// Configuration for the lunar phase display module.
@@ -149,6 +175,11 @@ pub struct LunarConfig {
     /// Rendering mode for the moon icon.
     #[serde(default)]
     pub render_mode: LunarRenderMode,
+    /// Layout mode: `icon` renders a square icon only; `verbose` renders the
+    /// icon in the left half and the integer illumination percentage in the right
+    /// half.
+    #[serde(default)]
+    pub display: DisplayMode,
 }
 
 fn default_body() -> String {
@@ -168,6 +199,8 @@ pub struct LunarModule {
     cached_phase: f64,
     /// Human-readable phase name.
     cached_name: String,
+    /// Illumination percentage (0–100), cached alongside phase.
+    cached_illumination_pct: u8,
     /// Date on which the cache was last filled.
     last_date: Option<NaiveDate>,
 }
@@ -178,6 +211,7 @@ impl LunarModule {
             config,
             cached_phase: 0.0,
             cached_name: String::new(),
+            cached_illumination_pct: 0,
             last_date: None,
         }
     }
@@ -228,12 +262,18 @@ impl PanelModule for LunarModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let height = theme.fonts.size * 2.0;
-        if self.config.show_label && !self.cached_name.is_empty() {
-            let text_width = render_utils::estimate_text_width(&self.cached_name, theme.fonts.size);
-            Size::new(height + text_width + 4.0, height)
-        } else {
-            Size::new(height, height)
+        let h = theme.fonts.size * 2.0;
+        match self.config.display {
+            DisplayMode::Verbose => Size::new(h * 2.0, h),
+            DisplayMode::Icon => {
+                if self.config.show_label && !self.cached_name.is_empty() {
+                    let text_width =
+                        render_utils::estimate_text_width(&self.cached_name, theme.fonts.size);
+                    Size::new(h + text_width + 4.0, h)
+                } else {
+                    Size::new(h, h)
+                }
+            }
         }
     }
 
@@ -247,27 +287,83 @@ impl PanelModule for LunarModule {
         let new_phase = phase_angle(body, today);
         let new_name = phase_name_for_angle(new_phase).label().to_owned();
 
+        let illum_angle = (new_phase - 0.5) * 2.0 * std::f64::consts::PI;
+        let illum_frac = (illum_angle.cos() + 1.0) / 2.0;
+        let new_illum_pct = (illum_frac * 100.0).round() as u8;
+
         let changed = (new_phase - self.cached_phase).abs() > 1e-9 || new_name != self.cached_name;
         self.cached_phase = new_phase;
         self.cached_name = new_name;
+        self.cached_illumination_pct = new_illum_pct;
         changed
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let icon_size = bounds.height - 2.0;
-        let icon_bounds = Rect::new(bounds.x + 1.0, bounds.y + 1.0, icon_size, icon_size);
-
         let lit_color = theme.colors.foreground;
         let dark_color = dim_color(theme.colors.background, 0.3);
-        render_utils::draw_moon_phase(canvas, icon_bounds, self.cached_phase, lit_color, dark_color);
 
-        if self.config.show_label && !self.cached_name.is_empty() {
-            let label_x = bounds.x + icon_size + 4.0;
-            let label_rect =
-                Rect::new(label_x, bounds.y, bounds.width - icon_size - 4.0, bounds.height);
-            let bold = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
-            let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-            render_utils::draw_text(canvas, &self.cached_name, label_rect, bold, text_size, theme.colors.foreground);
+        match self.config.display {
+            DisplayMode::Icon => {
+                let icon_size = bounds.height - 2.0;
+                let icon_bounds = Rect::new(bounds.x + 1.0, bounds.y + 1.0, icon_size, icon_size);
+                render_utils::draw_moon_phase(
+                    canvas,
+                    icon_bounds,
+                    self.cached_phase,
+                    lit_color,
+                    dark_color,
+                );
+                if self.config.show_label && !self.cached_name.is_empty() {
+                    let label_x = bounds.x + icon_size + 4.0;
+                    let label_rect = Rect::new(
+                        label_x,
+                        bounds.y,
+                        bounds.width - icon_size - 4.0,
+                        bounds.height,
+                    );
+                    let bold = theme
+                        .fonts
+                        .bold_family
+                        .as_deref()
+                        .unwrap_or(&theme.fonts.family);
+                    let text_size =
+                        render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                    render_utils::draw_text(
+                        canvas,
+                        &self.cached_name,
+                        label_rect,
+                        bold,
+                        text_size,
+                        theme.colors.foreground,
+                    );
+                }
+            }
+            DisplayMode::Verbose => {
+                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
+                let icon_bounds = icon_half.inset(1.0, 1.0, 1.0, 1.0);
+                render_utils::draw_moon_phase(
+                    canvas,
+                    icon_bounds,
+                    self.cached_phase,
+                    lit_color,
+                    dark_color,
+                );
+                let readout = format!("{}%", self.cached_illumination_pct);
+                let bold = theme
+                    .fonts
+                    .bold_family
+                    .as_deref()
+                    .unwrap_or(&theme.fonts.family);
+                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                render_utils::draw_text_centered(
+                    canvas,
+                    &readout,
+                    text_half,
+                    bold,
+                    text_size,
+                    theme.colors.foreground,
+                );
+            }
         }
     }
 
@@ -298,6 +394,17 @@ impl PanelModule for LunarModule {
         ModuleConfigSchema {
             module_id: self.id().to_owned(),
             fields: vec![
+                ConfigField {
+                    key: "display".to_owned(),
+                    label: "Display mode".to_owned(),
+                    description: "Icon-only square or double-wide icon + illumination percentage."
+                        .to_owned(),
+                    field_type: ConfigFieldType::LabeledChoice {
+                        options: vec!["icon".to_owned(), "verbose".to_owned()],
+                        labels: vec!["Icon only".to_owned(), "Icon + value".to_owned()],
+                        default: "icon".to_owned(),
+                    },
+                },
                 ConfigField {
                     key: "show_label".to_owned(),
                     label: "Show phase label".to_owned(),
@@ -357,9 +464,19 @@ impl PopupContent for LunarPopup {
         );
         let lit_color = theme.colors.foreground;
         let dark_color = dim_color(theme.colors.foreground, 0.15);
-        render_utils::draw_moon_phase(canvas, moon_bounds, self.phase_fraction, lit_color, dark_color);
+        render_utils::draw_moon_phase(
+            canvas,
+            moon_bounds,
+            self.phase_fraction,
+            lit_color,
+            dark_color,
+        );
 
-        let bold = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
+        let bold = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
         let font = &theme.fonts.family;
 
         // Body name (capitalised)
@@ -368,7 +485,14 @@ impl PopupContent for LunarPopup {
             c.make_ascii_uppercase();
         }
         let name_rect = Rect::new(bounds.x, bounds.y + 88.0, bounds.width, 24.0);
-        render_utils::draw_text_centered(canvas, &body_display, name_rect, bold, 16.0, theme.colors.foreground);
+        render_utils::draw_text_centered(
+            canvas,
+            &body_display,
+            name_rect,
+            bold,
+            16.0,
+            theme.colors.foreground,
+        );
 
         // Phase name (dimmed)
         let dim = dim_color(theme.colors.foreground, 0.8);

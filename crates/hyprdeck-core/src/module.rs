@@ -1,10 +1,27 @@
 use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
 use tiny_skia::Pixmap;
 
 use crate::action::Action;
 use crate::geometry::{Rect, Size};
 use crate::ipc::event::HyprState;
 use crate::panel::{ColorPalette, FontConfig, Padding, ResolvedModuleStyles};
+
+// ── Display mode ───────────────────────────────────────────────────────────────
+
+/// Controls whether a module renders as a single icon square or as a
+/// double-wide icon-plus-readout widget.
+///
+/// `Icon` is the default and preserves the module's pre-existing square
+/// geometry. `Verbose` doubles the width: the icon occupies the left half and
+/// a numeric readout occupies the right half.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayMode {
+    #[default]
+    Icon,
+    Verbose,
+}
 
 // ── Update context ─────────────────────────────────────────────────────────────
 
@@ -112,6 +129,14 @@ pub enum ConfigFieldType {
         options: Vec<String>,
         default: String,
     },
+    /// Like `Choice` but supplies human-readable display labels alongside the
+    /// serialised option strings. HyprCube renders `labels` in its dropdown;
+    /// `options` are the values written to `hyprdeck.toml`.
+    LabeledChoice {
+        options: Vec<String>,
+        labels: Vec<String>,
+        default: String,
+    },
     Color {
         default: String,
     },
@@ -166,5 +191,44 @@ pub trait PanelModule: Send {
     /// returns `true`.  Should never return `None` when `has_popup()` is `true`.
     fn popup_content(&self) -> Option<Box<dyn crate::popup::PopupContent>> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_mode_default_is_icon() {
+        assert_eq!(DisplayMode::default(), DisplayMode::Icon);
+    }
+
+    #[test]
+    fn display_mode_serde_roundtrip() {
+        let icon: DisplayMode = serde_json::from_str("\"icon\"").unwrap();
+        assert_eq!(icon, DisplayMode::Icon);
+        let verbose: DisplayMode = serde_json::from_str("\"verbose\"").unwrap();
+        assert_eq!(verbose, DisplayMode::Verbose);
+    }
+
+    #[test]
+    fn display_mode_serialize() {
+        assert_eq!(
+            serde_json::to_string(&DisplayMode::Icon).unwrap(),
+            "\"icon\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DisplayMode::Verbose).unwrap(),
+            "\"verbose\""
+        );
+    }
+
+    #[test]
+    fn display_mode_unknown_value_fails() {
+        let result: Result<DisplayMode, _> = serde_json::from_str("\"compact\"");
+        assert!(
+            result.is_err(),
+            "unknown variant 'compact' should fail to deserialize"
+        );
     }
 }

@@ -6,11 +6,11 @@
 use chrono::{Datelike as _, Local, NaiveDate};
 use serde::Deserialize;
 
+use hyprdeck_core::widgets::{CellStyle, TableCell, TableConfig, compute_table_size, draw_table};
 use hyprdeck_core::{
     ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
     PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
 };
-use hyprdeck_core::widgets::{CellStyle, TableCell, TableConfig, compute_table_size, draw_table};
 
 use crate::render_utils;
 
@@ -109,8 +109,20 @@ fn to_discordian(date: NaiveDate) -> String {
 
     let doy = if leap && doy > 60 { doy - 1 } else { doy };
 
-    const SEASONS: [&str; 5] = ["Chaos", "Discord", "Confusion", "Bureaucracy", "The Aftermath"];
-    const DAYS: [&str; 5] = ["Sweetmorn", "Boomtime", "Pungenday", "Prickle-Prickle", "Setting Orange"];
+    const SEASONS: [&str; 5] = [
+        "Chaos",
+        "Discord",
+        "Confusion",
+        "Bureaucracy",
+        "The Aftermath",
+    ];
+    const DAYS: [&str; 5] = [
+        "Sweetmorn",
+        "Boomtime",
+        "Pungenday",
+        "Prickle-Prickle",
+        "Setting Orange",
+    ];
 
     let idx = doy - 1;
     let season = SEASONS[(idx / 73) as usize];
@@ -232,7 +244,11 @@ impl PanelModule for CalendarModule {
 
 // ── Gregorian calendar data ────────────────────────────────────────────────────
 
-fn gregorian_month_table(year: i32, month: u32, today: Option<u32>) -> (TableConfig, Vec<Vec<TableCell>>) {
+fn gregorian_month_table(
+    year: i32,
+    month: u32,
+    today: Option<u32>,
+) -> (TableConfig, Vec<Vec<TableCell>>) {
     let config = TableConfig {
         columns: 7,
         column_headers: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
@@ -269,7 +285,10 @@ fn gregorian_month_table(year: i32, month: u32, today: Option<u32>) -> (TableCon
         } else {
             CellStyle::Normal
         };
-        current_row.push(TableCell { text: day.to_string(), style });
+        current_row.push(TableCell {
+            text: day.to_string(),
+            style,
+        });
         if current_row.len() == 7 {
             rows.push(current_row);
             current_row = Vec::new();
@@ -317,8 +336,13 @@ fn gregorian_month_name(month: u32) -> &'static str {
 
 // ── Discordian calendar data ───────────────────────────────────────────────────
 
-const DISCORDIAN_SEASONS: [&str; 5] =
-    ["Chaos", "Discord", "Confusion", "Bureaucracy", "The Aftermath"];
+const DISCORDIAN_SEASONS: [&str; 5] = [
+    "Chaos",
+    "Discord",
+    "Confusion",
+    "Bureaucracy",
+    "The Aftermath",
+];
 
 const DISCORDIAN_WEEKDAYS: [&str; 5] = ["SM", "BT", "PD", "PP", "SO"];
 
@@ -332,7 +356,10 @@ fn discordian_season_table(
     let config = TableConfig {
         columns: 5,
         column_headers: DISCORDIAN_WEEKDAYS.iter().map(|s| s.to_string()).collect(),
-        title: Some(format!("{}, YOLD {}", DISCORDIAN_SEASONS[season_index], yold)),
+        title: Some(format!(
+            "{}, YOLD {}",
+            DISCORDIAN_SEASONS[season_index], yold
+        )),
         cell_width: 38.0,
         cell_height: 26.0,
         title_height: 30.0,
@@ -352,7 +379,10 @@ fn discordian_season_table(
         } else {
             CellStyle::Normal
         };
-        current_row.push(TableCell { text: day.to_string(), style });
+        current_row.push(TableCell {
+            text: day.to_string(),
+            style,
+        });
         if current_row.len() == 5 {
             rows.push(current_row);
             current_row = Vec::new();
@@ -401,21 +431,17 @@ impl CalendarPopup {
     pub fn new(system: &CalendarSystem) -> Self {
         let now = Local::now();
         let (config, rows) = match system {
-            CalendarSystem::Gregorian => gregorian_month_table(
-                now.year(),
-                now.month(),
-                Some(now.day()),
-            ),
+            CalendarSystem::Gregorian => {
+                gregorian_month_table(now.year(), now.month(), Some(now.day()))
+            }
             CalendarSystem::Discordian => {
                 let date = now.date_naive();
                 let (season_idx, season_day) = gregorian_to_discordian_season(date);
                 discordian_season_table(now.year(), season_idx, Some(season_day))
             }
-            CalendarSystem::Custom => gregorian_month_table(
-                now.year(),
-                now.month(),
-                Some(now.day()),
-            ),
+            CalendarSystem::Custom => {
+                gregorian_month_table(now.year(), now.month(), Some(now.day()))
+            }
         };
         Self { config, rows }
     }
@@ -428,8 +454,16 @@ impl PopupContent for CalendarPopup {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let bold_font = theme.fonts.bold_family.as_deref().unwrap_or(&theme.fonts.family);
-        let mono_font = theme.fonts.mono_family.as_deref().unwrap_or(&theme.fonts.family);
+        let bold_font = theme
+            .fonts
+            .bold_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
+        let mono_font = theme
+            .fonts
+            .mono_family
+            .as_deref()
+            .unwrap_or(&theme.fonts.family);
 
         let fg = theme.colors.foreground;
         let header_color = [fg[0], fg[1], fg[2], (fg[3] as f32 * 0.5) as u8];
@@ -577,8 +611,16 @@ mod tests {
         let state = hyprdeck_core::HyprState::default();
         let t1 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 1, 0, 0, 0).unwrap();
         let t2 = chrono::TimeZone::with_ymd_and_hms(&chrono::Local, 2024, 3, 2, 0, 0, 0).unwrap();
-        let ctx1 = UpdateContext { now: t1, hypr_state: &state, output_name: "" };
-        let ctx2 = UpdateContext { now: t2, hypr_state: &state, output_name: "" };
+        let ctx1 = UpdateContext {
+            now: t1,
+            hypr_state: &state,
+            output_name: "",
+        };
+        let ctx2 = UpdateContext {
+            now: t2,
+            hypr_state: &state,
+            output_name: "",
+        };
         assert!(m.update(&ctx1), "first update should return true");
         assert!(!m.update(&ctx1), "same day should return false");
         assert!(m.update(&ctx2), "next day should return true");

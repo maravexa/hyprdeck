@@ -17,9 +17,9 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use hyprdeck_core::{
-    ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
-    PanelModule, Pixmap, Point, PopupContent, PopupEventResult, Rect, Size, ThemeContext,
-    UpdateContext,
+    ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
+    MouseButton, PanelModule, Pixmap, Point, PopupContent, PopupEventResult, Rect, Size,
+    ThemeContext, UpdateContext,
 };
 
 use crate::render_utils;
@@ -41,6 +41,9 @@ pub enum AudioBackend {
 /// Configuration for the sound module.
 #[derive(Debug, Deserialize)]
 pub struct SoundConfig {
+    /// `icon` — square icon only; `verbose` — icon left half + volume % right half.
+    #[serde(default)]
+    pub display: DisplayMode,
     /// Preferred audio backend.
     #[serde(default)]
     pub backend: AudioBackend,
@@ -62,6 +65,7 @@ fn default_volume_step() -> u32 {
 impl Default for SoundConfig {
     fn default() -> Self {
         Self {
+            display: DisplayMode::Icon,
             backend: AudioBackend::Auto,
             poll_interval_ms: default_poll_ms(),
             volume_step: default_volume_step(),
@@ -136,15 +140,10 @@ impl PanelModule for SoundModule {
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
         let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
-        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
-        // Icon + space + "100%"
-        let text = speaker_icon(self.state.volume_percent, self.state.muted).to_owned()
-            + " "
-            + &format!("{}%", self.state.volume_percent);
-        let w = render_utils::estimate_text_width(&text, font_size)
-            + theme.padding.left
-            + theme.padding.right;
-        Size::new(w.max(48.0), h)
+        match self.config.display {
+            DisplayMode::Icon => Size::new(h, h),
+            DisplayMode::Verbose => Size::new(h * 2.0, h),
+        }
     }
 
     fn update(&mut self, _ctx: &UpdateContext<'_>) -> bool {
@@ -207,43 +206,49 @@ impl PanelModule for SoundModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let icon = speaker_icon(self.state.volume_percent, self.state.muted);
-        let icon_size = (bounds.height * 0.8).floor();
-        let icon_rect = Rect::new(bounds.x, bounds.y, bounds.height, bounds.height);
-        render_utils::draw_text_centered(
-            canvas,
-            icon,
-            icon_rect,
-            &theme.fonts.family,
-            icon_size,
-            theme.colors.foreground,
-        );
+        let icon_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
 
-        if bounds.width > bounds.height + 20.0 {
-            let text_rect = Rect::new(
-                bounds.x + bounds.height,
-                bounds.y,
-                bounds.width - bounds.height,
-                bounds.height,
-            );
-            let font = theme
-                .fonts
-                .bold_family
-                .as_deref()
-                .unwrap_or(&theme.fonts.family);
-            let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-            let vol_text = if self.state.backend_name.is_empty() {
-                "--".to_owned()
-            } else {
-                format!("{}%", self.state.volume_percent)
-            };
-            render_utils::draw_text_centered(
-                canvas,
-                &vol_text,
-                text_rect,
-                font,
-                text_size,
-                theme.colors.foreground,
-            );
+        match self.config.display {
+            DisplayMode::Icon => {
+                render_utils::draw_text_centered(
+                    canvas,
+                    icon,
+                    bounds,
+                    &theme.fonts.family,
+                    icon_size,
+                    theme.colors.foreground,
+                );
+            }
+            DisplayMode::Verbose => {
+                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
+                render_utils::draw_text_centered(
+                    canvas,
+                    icon,
+                    icon_half,
+                    &theme.fonts.family,
+                    icon_size,
+                    theme.colors.foreground,
+                );
+                let font = theme
+                    .fonts
+                    .bold_family
+                    .as_deref()
+                    .unwrap_or(&theme.fonts.family);
+                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                let vol_text = if self.state.backend_name.is_empty() {
+                    "--".to_owned()
+                } else {
+                    format!("{}%", self.state.volume_percent.clamp(0, 100))
+                };
+                render_utils::draw_text_centered(
+                    canvas,
+                    &vol_text,
+                    text_half,
+                    font,
+                    text_size,
+                    theme.colors.foreground,
+                );
+            }
         }
     }
 
@@ -269,8 +274,7 @@ impl PanelModule for SoundModule {
                 let step = self.config.volume_step as i32;
                 // dy < 0 = scroll down = decrease; dy > 0 = scroll up = increase
                 let delta = if *dy > 0.0 { step } else { -step };
-                let new_vol =
-                    (self.state.volume_percent as i32 + delta).clamp(0, 150) as u32;
+                let new_vol = (self.state.volume_percent as i32 + delta).clamp(0, 150) as u32;
                 self.state.volume_percent = new_vol; // optimistic update
                 let backend = self.detected_backend.clone();
                 tokio::spawn(async move {
@@ -291,6 +295,18 @@ impl PanelModule for SoundModule {
         ModuleConfigSchema {
             module_id: self.id().to_owned(),
             fields: vec![
+                ConfigField {
+                    key: "display".to_owned(),
+                    label: "Display mode".to_owned(),
+                    description:
+                        "Icon-only square or double-wide icon + volume percentage readout."
+                            .to_owned(),
+                    field_type: ConfigFieldType::LabeledChoice {
+                        options: vec!["icon".to_owned(), "verbose".to_owned()],
+                        labels: vec!["Icon only".to_owned(), "Icon + value".to_owned()],
+                        default: "icon".to_owned(),
+                    },
+                },
                 ConfigField {
                     key: "backend".to_owned(),
                     label: "Audio backend".to_owned(),
@@ -392,7 +408,14 @@ impl PopupContent for SoundPopup {
             format!("Audio: {}", self.state.backend_name)
         };
         let title_rect = Rect::new(bounds.x, bounds.y, bounds.width, 22.0);
-        render_utils::draw_text_centered(canvas, &title, title_rect, bold, font_size, theme.colors.foreground);
+        render_utils::draw_text_centered(
+            canvas,
+            &title,
+            title_rect,
+            bold,
+            font_size,
+            theme.colors.foreground,
+        );
 
         // ── Sink name (smaller, dimmed) ──
         if !self.state.sink_name.is_empty() {
@@ -427,7 +450,10 @@ impl PopupContent for SoundPopup {
         let handle_x = bounds.x + fill_width;
         render_utils::fill_circle(
             canvas,
-            Point::new(handle_x.clamp(bounds.x + 8.0, bounds.x + bounds.width - 8.0), slider_y + 12.0),
+            Point::new(
+                handle_x.clamp(bounds.x + 8.0, bounds.x + bounds.width - 8.0),
+                slider_y + 12.0,
+            ),
             8.0,
             theme.colors.accent,
         );

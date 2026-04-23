@@ -12,30 +12,21 @@ use serde::Deserialize;
 use tiny_skia::{LineCap, Paint, PathBuilder, Stroke, Transform};
 
 use hyprdeck_core::{
-    ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, PanelModule, Pixmap,
-    Point, PopupContent, PopupEventResult, Rect, Size, ThemeContext, UpdateContext,
+    ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
+    PanelModule, Pixmap, Point, PopupContent, PopupEventResult, Rect, Size, ThemeContext,
+    UpdateContext,
 };
 
 use crate::render_utils;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-/// What to show alongside the network icon.
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum NetworkDisplay {
-    #[default]
-    Icon,
-    IconLabel,
-    IconRate,
-}
-
 /// Configuration for the network status module.
 #[derive(Debug, Default, Deserialize)]
 pub struct NetworkConfig {
-    /// Display style.
+    /// `icon` — square icon only; `verbose` — icon left half + readout right half.
     #[serde(default)]
-    pub display: NetworkDisplay,
+    pub display: DisplayMode,
     /// Network interface to monitor; auto-detected if absent.
     pub interface: Option<String>,
     /// Poll interval in seconds.
@@ -89,6 +80,24 @@ impl NetworkModule {
             Some(t) => t.elapsed() >= Duration::from_secs(self.config.poll_secs),
         }
     }
+
+    /// Build the right-half readout string for verbose display mode.
+    fn verbose_readout(&self) -> String {
+        if !self.snapshot.is_connected {
+            return "--".to_owned();
+        }
+        if self.snapshot.is_wireless {
+            match self.snapshot.signal_dbm {
+                Some(dbm) => format!("{} dBm", dbm),
+                None => "--".to_owned(),
+            }
+        } else {
+            match self.snapshot.link_speed_mbps {
+                Some(mbps) => format_link_speed(mbps),
+                None => "--".to_owned(),
+            }
+        }
+    }
 }
 
 impl PanelModule for NetworkModule {
@@ -97,27 +106,14 @@ impl PanelModule for NetworkModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        // Give the icon plenty of horizontal room — the icon is drawn at
-        // effective_font_size(bounds.height) in render(), which can be larger
-        // than font_size when bar_height > font_size.  Use 2× font_size as a
-        // generous width estimate so the icon is never squished.
-        let icon_w = theme.fonts.size * 2.0;
-        let label_w = match self.config.display {
-            NetworkDisplay::Icon => 0.0,
-            NetworkDisplay::IconLabel => {
-                let label = if self.snapshot.is_wireless {
-                    "WiFi"
-                } else {
-                    &self.snapshot.interface_name
-                };
-                render_utils::estimate_text_width(label, theme.fonts.size) + 4.0
+        let h = theme.fonts.size * 2.0;
+        match self.config.display {
+            DisplayMode::Icon => {
+                let padding = theme.padding.left + theme.padding.right + 8.0;
+                Size::new(h + padding, h)
             }
-            NetworkDisplay::IconRate => {
-                render_utils::estimate_text_width("↓ 0.0 MB/s", theme.fonts.size) + 4.0
-            }
-        };
-        let padding = theme.padding.left + theme.padding.right + 8.0;
-        Size::new(icon_w + label_w + padding, theme.fonts.size * 2.0)
+            DisplayMode::Verbose => Size::new(h * 2.0, h),
+        }
     }
 
     fn update(&mut self, ctx: &UpdateContext<'_>) -> bool {
@@ -162,51 +158,50 @@ impl PanelModule for NetworkModule {
             self.snapshot.interface_name,
         );
 
-        let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-        let icon_rect = Rect::new(
-            bounds.x + theme.padding.left,
-            bounds.y + (bounds.height - icon_dim) / 2.0,
-            icon_dim,
-            icon_dim,
-        );
-
         let fg = theme.colors.foreground;
         let dim = [fg[0], fg[1], fg[2], (fg[3] as f32 * 0.4) as u8];
         let active = if self.snapshot.is_connected { fg } else { dim };
 
-        if self.snapshot.is_wireless {
-            draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
-        } else {
-            draw_ethernet_icon(canvas, icon_rect, active);
-        }
-
-        // Optional label.
-        if let NetworkDisplay::IconLabel = self.config.display {
-            let label_x = icon_rect.x + icon_rect.width + 4.0;
-            let label_rect = Rect::new(
-                label_x,
-                bounds.y,
-                (bounds.x + bounds.width) - label_x,
-                bounds.height,
-            );
-            let label = if self.snapshot.is_wireless {
-                "WiFi"
-            } else {
-                &self.snapshot.interface_name
-            };
-            let font = theme
-                .fonts
-                .bold_family
-                .as_deref()
-                .unwrap_or(&theme.fonts.family);
-            render_utils::draw_text(
-                canvas,
-                label,
-                label_rect,
-                font,
-                icon_dim,
-                active,
-            );
+        match self.config.display {
+            DisplayMode::Icon => {
+                let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                let icon_rect = Rect::new(
+                    bounds.x + (bounds.width - icon_dim) / 2.0,
+                    bounds.y + (bounds.height - icon_dim) / 2.0,
+                    icon_dim,
+                    icon_dim,
+                );
+                if self.snapshot.is_wireless {
+                    draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
+                } else {
+                    draw_ethernet_icon(canvas, icon_rect, active);
+                }
+            }
+            DisplayMode::Verbose => {
+                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
+                let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                let icon_rect = Rect::new(
+                    icon_half.x + (icon_half.width - icon_dim) / 2.0,
+                    icon_half.y + (icon_half.height - icon_dim) / 2.0,
+                    icon_dim,
+                    icon_dim,
+                );
+                if self.snapshot.is_wireless {
+                    draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
+                } else {
+                    draw_ethernet_icon(canvas, icon_rect, active);
+                }
+                let readout = self.verbose_readout();
+                let font = theme
+                    .fonts
+                    .bold_family
+                    .as_deref()
+                    .unwrap_or(&theme.fonts.family);
+                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
+                render_utils::draw_text_centered(
+                    canvas, &readout, text_half, font, text_size, active,
+                );
+            }
         }
     }
 
@@ -230,14 +225,12 @@ impl PanelModule for NetworkModule {
             fields: vec![
                 ConfigField {
                     key: "display".to_owned(),
-                    label: "Display style".to_owned(),
-                    description: "How much network detail to show.".to_owned(),
-                    field_type: ConfigFieldType::Choice {
-                        options: vec![
-                            "icon".to_owned(),
-                            "iconlabel".to_owned(),
-                            "iconrate".to_owned(),
-                        ],
+                    label: "Display mode".to_owned(),
+                    description: "Icon-only square or double-wide icon + signal/speed readout."
+                        .to_owned(),
+                    field_type: ConfigFieldType::LabeledChoice {
+                        options: vec!["icon".to_owned(), "verbose".to_owned()],
+                        labels: vec!["Icon only".to_owned(), "Icon + value".to_owned()],
                         default: "icon".to_owned(),
                     },
                 },
@@ -263,6 +256,24 @@ impl PanelModule for NetworkModule {
     }
 }
 
+// ── Link speed formatter ──────────────────────────────────────────────────────
+
+/// Format a wired link speed compactly.
+///
+/// Values < 1000 Mb/s use `Mb`; values ≥ 1000 Mb/s use `Gb`.  Trailing
+/// fractional zeros are dropped (`1Gb` not `1.0Gb`).
+pub fn format_link_speed(mbps: u64) -> String {
+    if mbps >= 1000 {
+        if mbps % 1000 == 0 {
+            format!("{}Gb", mbps / 1000)
+        } else {
+            format!("{:.1}Gb", mbps as f64 / 1000.0)
+        }
+    } else {
+        format!("{}Mb", mbps)
+    }
+}
+
 // ── System polling ────────────────────────────────────────────────────────────
 
 fn poll_interface(iface: &str) -> NetworkSnapshot {
@@ -274,7 +285,11 @@ fn poll_interface(iface: &str) -> NetworkSnapshot {
     let is_wireless = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
 
     let ip_address = get_ip(iface);
-    let signal_dbm = if is_wireless { read_wifi_signal(iface) } else { None };
+    let signal_dbm = if is_wireless {
+        read_wifi_signal(iface)
+    } else {
+        None
+    };
 
     let link_speed_mbps = if !is_wireless && is_connected {
         std::fs::read_to_string(format!("/sys/class/net/{iface}/speed"))
@@ -581,7 +596,12 @@ impl PopupContent for NetworkPopup {
             let title = format!("{kind} — {}", row.interface);
             let title_rect = Rect::new(bounds.x, y, bounds.width, line_h);
             render_utils::draw_text_centered(
-                canvas, &title, title_rect, bold, font_size, theme.colors.foreground,
+                canvas,
+                &title,
+                title_rect,
+                bold,
+                font_size,
+                theme.colors.foreground,
             );
             y += line_h;
 
@@ -607,8 +627,15 @@ impl PopupContent for NetworkPopup {
 
                 // Signal strength bars
                 if let Some(dbm) = row.signal_dbm {
-                    let bars: i32 =
-                        if dbm >= -55 { 4 } else if dbm >= -67 { 3 } else if dbm >= -80 { 2 } else { 1 };
+                    let bars: i32 = if dbm >= -55 {
+                        4
+                    } else if dbm >= -67 {
+                        3
+                    } else if dbm >= -80 {
+                        2
+                    } else {
+                        1
+                    };
                     let bar_w = 8.0_f32;
                     let bar_gap = 4.0_f32;
                     let total_w = 4.0 * bar_w + 3.0 * bar_gap;
@@ -618,16 +645,28 @@ impl PopupContent for NetworkPopup {
                         let h = max_h * (i as f32 + 1.0) / 4.0;
                         let bx = start_x + i as f32 * (bar_w + bar_gap);
                         let by = y + max_h - h;
-                        let color = if (i as i32) < bars { theme.colors.accent } else { dim };
+                        let color = if (i as i32) < bars {
+                            theme.colors.accent
+                        } else {
+                            dim
+                        };
                         render_utils::fill_rounded_rect(
-                            canvas, Rect::new(bx, by, bar_w, h), color, 2.0,
+                            canvas,
+                            Rect::new(bx, by, bar_w, h),
+                            color,
+                            2.0,
                         );
                     }
                 }
             } else if !row.speed_label.is_empty() {
                 let spd_rect = Rect::new(bounds.x, y, bounds.width, line_h);
                 render_utils::draw_text_centered(
-                    canvas, &row.speed_label, spd_rect, font, font_size, dim,
+                    canvas,
+                    &row.speed_label,
+                    spd_rect,
+                    font,
+                    font_size,
+                    dim,
                 );
             }
         }
@@ -651,6 +690,37 @@ fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
 mod tests {
     use super::*;
     use hyprdeck_core::HyprState;
+
+    // ── format_link_speed ─────────────────────────────────────────────────────
+
+    #[test]
+    fn link_speed_megabit_values() {
+        assert_eq!(format_link_speed(10), "10Mb");
+        assert_eq!(format_link_speed(100), "100Mb");
+        assert_eq!(format_link_speed(999), "999Mb");
+    }
+
+    #[test]
+    fn link_speed_gigabit_integer() {
+        assert_eq!(format_link_speed(1000), "1Gb");
+        assert_eq!(format_link_speed(10_000), "10Gb");
+        assert_eq!(format_link_speed(25_000), "25Gb");
+        assert_eq!(format_link_speed(40_000), "40Gb");
+        assert_eq!(format_link_speed(100_000), "100Gb");
+    }
+
+    #[test]
+    fn link_speed_gigabit_fractional() {
+        assert_eq!(format_link_speed(2_500), "2.5Gb");
+    }
+
+    #[test]
+    fn link_speed_boundary() {
+        assert_eq!(format_link_speed(999), "999Mb");
+        assert_eq!(format_link_speed(1000), "1Gb");
+    }
+
+    // ── NetworkModule ─────────────────────────────────────────────────────────
 
     #[test]
     fn default_snapshot_is_disconnected() {

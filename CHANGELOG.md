@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Icon-only / verbose display modes for `lunar`, `sound`, and `network` modules,
+  configurable via `hyprdeck.toml`.
+  - `display = "icon"` (default) — single icon square; preserves existing layout.
+  - `display = "verbose"` — double-wide widget: icon in the left half, numeric
+    readout in the right half.
+    - **lunar** readout: integer illumination percentage (e.g. `87%`), derived from
+      the same `fn0rd` synodic-period calculation used by the popup.
+    - **sound** readout: master volume percentage clamped to 0–100 (e.g. `75%`);
+      shows `--` until the audio backend is detected.
+    - **network** readout: `-45 dBm` for Wi-Fi, compact link speed for wired
+      (`10Mb`, `100Mb`, `1Gb`, `2.5Gb`, …), or `--` when no default interface
+      is active.
+  - All three modules expose a `display` field in `config_schema()` with
+    human-readable labels (`"Icon only"` / `"Icon + value"`) for HyprCube
+    auto-generated settings UI.
+  - `hyprdeck_core::DisplayMode` enum is publicly exported for future use by
+    third-party modules.
+  - All five shipped themes extended with a `verbose_text_padding` style field
+    that documents (and in future wires) the gap between icon and readout halves.
+  - Note: hot reload is not yet implemented; a panel restart is required to apply
+    `display` mode changes.
+
 ### Breaking
 
 - Config file renamed to `hyprdeck.toml` and moved to `$XDG_CONFIG_HOME/hypr/hyprdeck.toml`
@@ -18,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hyprdeck_core::default_config_path()` is now the canonical path-resolution
   function; downstream tools (HyprCube) should call it rather than re-implementing
   the XDG lookup.
+- `network` module: the `display` field now accepts `"icon"` or `"verbose"` only.
+  The previous values `"iconlabel"` and `"iconrate"` are no longer valid and will
+  produce a config parse error. Users who set these values should migrate to
+  `display = "verbose"` for the equivalent readout behaviour.
 
 ## [0.4.0] - 2026-04-10
 

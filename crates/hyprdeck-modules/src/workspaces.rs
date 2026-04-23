@@ -175,7 +175,14 @@ impl PanelModule for WorkspacesModule {
                 .as_deref()
                 .unwrap_or(&theme.fonts.family);
             let font_size = (slot * 0.6).floor();
-            render_utils::draw_text_centered(canvas, &label, slot_rect, font_family, font_size, text_color);
+            render_utils::draw_text_centered(
+                canvas,
+                &label,
+                slot_rect,
+                font_family,
+                font_size,
+                text_color,
+            );
         }
     }
 

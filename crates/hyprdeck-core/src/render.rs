@@ -810,13 +810,13 @@ fn build_lit_path(
     } else {
         // Lit portion on the LEFT: trace left limb top→bottom, then terminator bottom→top.
         for i in 1..=segments {
-            let angle = -std::f32::consts::FRAC_PI_2
-                - std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 - std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
         }
         for i in (0..=segments).rev() {
-            let angle = -std::f32::consts::FRAC_PI_2
-                - std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 - std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
         }
     }

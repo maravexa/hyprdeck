@@ -28,12 +28,17 @@ background_radius    = 16.0
 background_opacity   = 0.6
 
 [style]
-background_color = "#1e1e1eff"
-foreground_color = "#f0f0f0"
-accent_color     = "#0a84ff"
-urgent_color     = "#ff453a"
-separator_color  = "#3a3a3a"
-font_family      = "SF Pro Text"
-font_size        = 11.0
-border_radius    = 16.0
-opacity          = 0.75
+background_color      = "#1e1e1eff"
+foreground_color      = "#f0f0f0"
+accent_color          = "#0a84ff"
+urgent_color          = "#ff453a"
+separator_color       = "#3a3a3a"
+font_family           = "SF Pro Text"
+font_size             = 11.0
+border_radius         = 16.0
+opacity               = 0.75
+# Gap between icon and readout halves in verbose display mode (logical px).
+# Verbose mode applies to modules on the top bar; modules in the dock layout
+# use icon mode regardless of user config because the dock's magnification
+# geometry assumes square icons.
+verbose_text_padding  = 4.0

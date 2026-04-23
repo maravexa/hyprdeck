@@ -38,12 +38,14 @@ inactive_background = "#3c3b37"
 inactive_foreground = "#eeeeec"
 
 [style]
-background_color = "#2e3436"
-foreground_color = "#eeeeec"
-accent_color     = "#729fcf"
-urgent_color     = "#cc0000"
-separator_color  = "#555753"
-font_family      = "Cantarell"
-font_size        = 11.0
-border_radius    = 0.0
-opacity          = 1.0
+background_color      = "#2e3436"
+foreground_color      = "#eeeeec"
+accent_color          = "#729fcf"
+urgent_color          = "#cc0000"
+separator_color       = "#555753"
+font_family           = "Cantarell"
+font_size             = 11.0
+border_radius         = 0.0
+opacity               = 1.0
+# Gap between icon and readout halves in verbose display mode (logical px).
+verbose_text_padding  = 3.0

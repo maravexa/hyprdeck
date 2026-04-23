@@ -26,12 +26,17 @@ modules_center = []
 modules_end    = ["sound", "power", "menu_button"]
 
 [style]
-background_color = "#1a1a2e"
-foreground_color = "#e0e0e0"
-accent_color     = "#4a90d9"
-urgent_color     = "#e74c3c"
-separator_color  = "#2a2a4e"
-font_family      = "Cantarell"
-font_size        = 10.0
-border_radius    = 4.0
-opacity          = 0.95
+background_color      = "#1a1a2e"
+foreground_color      = "#e0e0e0"
+accent_color          = "#4a90d9"
+urgent_color          = "#e74c3c"
+separator_color       = "#2a2a4e"
+font_family           = "Cantarell"
+font_size             = 10.0
+border_radius         = 4.0
+opacity               = 0.95
+# Gap between icon and readout halves in verbose display mode (logical px).
+# Note: the left-side vertical panel uses verbose mode only on the top bar;
+# verbose mode in the vertical sidebar would render as a tall widget which is
+# unusual but supported.
+verbose_text_padding  = 2.0

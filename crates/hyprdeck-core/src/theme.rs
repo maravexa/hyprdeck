@@ -156,6 +156,9 @@ pub struct StyleDefinition {
     pub border_radius: Option<f32>,
     /// Panel background opacity (0.0 = fully transparent, 1.0 = fully opaque).
     pub opacity: Option<f32>,
+    /// Gap inserted between the icon half and text half in verbose display mode,
+    /// in logical pixels. Defaults to `bar_height / 8` when absent.
+    pub verbose_text_padding: Option<f32>,
 }
 
 impl ThemeDefinition {

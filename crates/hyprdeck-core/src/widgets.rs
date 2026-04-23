@@ -129,7 +129,14 @@ pub fn draw_table(
     // ── Title ──────────────────────────────────────────────────────────────────
     if let Some(title) = &config.title {
         let title_rect = Rect::new(start_x, y, table_size.width, config.title_height);
-        draw_text_centered(pixmap, title, title_rect, bold_font_family, config.title_font_size, title_color);
+        draw_text_centered(
+            pixmap,
+            title,
+            title_rect,
+            bold_font_family,
+            config.title_font_size,
+            title_color,
+        );
         y += config.title_height;
     }
 
@@ -144,13 +151,28 @@ pub fn draw_table(
             config.cell_width,
             config.header_height,
         );
-        draw_text_centered(pixmap, header, cell_rect, bold_font_family, config.header_font_size, header_color);
+        draw_text_centered(
+            pixmap,
+            header,
+            cell_rect,
+            bold_font_family,
+            config.header_font_size,
+            header_color,
+        );
     }
     y += config.header_height;
 
     // ── Separator line under headers ───────────────────────────────────────────
     let line_color = with_opacity(fg, 0.15);
-    draw_line(pixmap, start_x, y - 1.0, start_x + table_size.width, y - 1.0, line_color, 1.0);
+    draw_line(
+        pixmap,
+        start_x,
+        y - 1.0,
+        start_x + table_size.width,
+        y - 1.0,
+        line_color,
+        1.0,
+    );
 
     // ── Data Rows ──────────────────────────────────────────────────────────────
     for row in rows {
@@ -179,17 +201,45 @@ pub fn draw_table(
                         cell_rect.height - inset * 2.0,
                     );
                     fill_rounded_rect(pixmap, highlight_rect, accent, config.highlight_radius);
-                    draw_text_centered(pixmap, &cell.text, cell_rect, bold_font_family, config.cell_font_size, bg);
+                    draw_text_centered(
+                        pixmap,
+                        &cell.text,
+                        cell_rect,
+                        bold_font_family,
+                        config.cell_font_size,
+                        bg,
+                    );
                 }
                 CellStyle::Dimmed => {
                     let dimmed = with_opacity(fg, 0.3);
-                    draw_text_centered(pixmap, &cell.text, cell_rect, mono_font_family, config.cell_font_size, dimmed);
+                    draw_text_centered(
+                        pixmap,
+                        &cell.text,
+                        cell_rect,
+                        mono_font_family,
+                        config.cell_font_size,
+                        dimmed,
+                    );
                 }
                 CellStyle::Accent => {
-                    draw_text_centered(pixmap, &cell.text, cell_rect, mono_font_family, config.cell_font_size, accent);
+                    draw_text_centered(
+                        pixmap,
+                        &cell.text,
+                        cell_rect,
+                        mono_font_family,
+                        config.cell_font_size,
+                        accent,
+                    );
                 }
                 CellStyle::Normal => {
-                    draw_text_centered(pixmap, &cell.text, cell_rect, mono_font_family, config.cell_font_size, fg);
+                    draw_text_centered(
+                        pixmap,
+                        &cell.text,
+                        cell_rect,
+                        mono_font_family,
+                        config.cell_font_size,
+                        fg,
+                    );
                 }
             }
         }
@@ -221,7 +271,13 @@ fn fill_rounded_rect(pixmap: &mut Pixmap, rect: Rect, color: Color, radius: f32)
         return;
     };
     paint.anti_alias = true;
-    pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_line(pixmap: &mut Pixmap, x1: f32, y1: f32, x2: f32, y2: f32, color: Color, width: f32) {
@@ -234,7 +290,11 @@ fn draw_line(pixmap: &mut Pixmap, x1: f32, y1: f32, x2: f32, y2: f32, color: Col
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
     paint.anti_alias = true;
-    let stroke = Stroke { width, line_cap: LineCap::Round, ..Stroke::default() };
+    let stroke = Stroke {
+        width,
+        line_cap: LineCap::Round,
+        ..Stroke::default()
+    };
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
@@ -293,7 +353,14 @@ fn draw_text_centered(
                                     if alpha == 0 {
                                         continue;
                                     }
-                                    alpha_blend(data, stride, px as usize, py as usize, color, alpha);
+                                    alpha_blend(
+                                        data,
+                                        stride,
+                                        px as usize,
+                                        py as usize,
+                                        color,
+                                        alpha,
+                                    );
                                 }
                             }
                         }
@@ -314,7 +381,14 @@ fn draw_text_centered(
                                         img.data[si + 2],
                                         img.data[si + 3],
                                     ];
-                                    alpha_blend(data, stride, px as usize, py as usize, src, src[3]);
+                                    alpha_blend(
+                                        data,
+                                        stride,
+                                        px as usize,
+                                        py as usize,
+                                        src,
+                                        src[3],
+                                    );
                                 }
                             }
                         }
@@ -336,7 +410,14 @@ fn draw_text_centered(
                                     if alpha == 0 {
                                         continue;
                                     }
-                                    alpha_blend(data, stride, px as usize, py as usize, color, alpha);
+                                    alpha_blend(
+                                        data,
+                                        stride,
+                                        px as usize,
+                                        py as usize,
+                                        color,
+                                        alpha,
+                                    );
                                 }
                             }
                         }
@@ -347,7 +428,14 @@ fn draw_text_centered(
     });
 }
 
-fn alpha_blend(data: &mut [u8], stride: usize, px: usize, py: usize, color: Color, glyph_alpha: u8) {
+fn alpha_blend(
+    data: &mut [u8],
+    stride: usize,
+    px: usize,
+    py: usize,
+    color: Color,
+    glyph_alpha: u8,
+) {
     let idx = py * stride + px * 4;
     if idx + 3 >= data.len() {
         return;

@@ -25,7 +25,10 @@ pub enum ConfigPathError {
 /// This is the canonical function for HyprCube to locate HyprDeck's config; do not
 /// duplicate this path-resolution logic on HyprCube's side.
 pub fn default_config_path() -> Result<PathBuf, ConfigPathError> {
-    resolve_config_path(std::env::var_os("XDG_CONFIG_HOME"), std::env::var_os("HOME"))
+    resolve_config_path(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    )
 }
 
 fn resolve_config_path(

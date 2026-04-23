@@ -23,12 +23,15 @@ inactive_background = "#0a246a"
 inactive_foreground = "#b0b0b0"
 
 [style]
-background_color = "#245edb"
-foreground_color = "#ffffff"
-accent_color     = "#3d8b37"
-urgent_color     = "#ff8c00"
-separator_color  = "#1a4ab0"
-font_family      = "Tahoma"
-font_size        = 11.0
-border_radius    = 2.0
-opacity          = 1.0
+background_color      = "#245edb"
+foreground_color      = "#ffffff"
+accent_color          = "#3d8b37"
+urgent_color          = "#ff8c00"
+separator_color       = "#1a4ab0"
+font_family           = "Tahoma"
+font_size             = 11.0
+border_radius         = 2.0
+opacity               = 1.0
+# Gap between icon and readout halves in verbose display mode (logical px).
+# Defaults to bar_height / 8 when absent.
+verbose_text_padding  = 3.0

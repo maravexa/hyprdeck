@@ -123,7 +123,13 @@ pub fn draw_moon_phase(
         let mut paint = Paint::default();
         paint.set_color_rgba8(lit_color[0], lit_color[1], lit_color[2], lit_color[3]);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -454,24 +460,24 @@ fn build_moon_lit_path(
 
     if waxing {
         for i in 1..=segments {
-            let angle = -std::f32::consts::FRAC_PI_2
-                + std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
         }
         for i in (0..=segments).rev() {
-            let angle = -std::f32::consts::FRAC_PI_2
-                + std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
         }
     } else {
         for i in 1..=segments {
-            let angle = -std::f32::consts::FRAC_PI_2
-                - std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 - std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
         }
         for i in (0..=segments).rev() {
-            let angle = -std::f32::consts::FRAC_PI_2
-                - std::f32::consts::PI * (i as f32 / segments as f32);
+            let angle =
+                -std::f32::consts::FRAC_PI_2 - std::f32::consts::PI * (i as f32 / segments as f32);
             pb.line_to(cx + terminator_x * angle.cos(), cy + radius * angle.sin());
         }
     }

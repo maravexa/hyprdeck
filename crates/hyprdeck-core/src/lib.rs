@@ -32,15 +32,15 @@ pub use layout::{
     LayoutResult, ModuleGroups, ModuleSizeProvider, VerticalLayout,
 };
 pub use module::{
-    ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
-    PanelModule, ThemeContext, UpdateContext,
+    ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
+    MouseButton, PanelModule, ThemeContext, UpdateContext,
 };
-pub use popup::{PopupContent, PopupEventResult, PopupState};
 pub use output::OutputState;
 pub use panel::{
     Color, ColorPalette, FontConfig, InputResult, Padding, Panel, ResolvedModuleStyles,
     ResolvedSeparator, ResolvedStyle, ResolvedWindowListStyle, ResolvedWorkspacesStyle,
 };
+pub use popup::{PopupContent, PopupEventResult, PopupState};
 pub use render::Canvas;
 pub use theme::{
     ButtonStyleDef, DockConfig, LayoutType, ModuleStyleMap, PanelDefinition, StyleDefinition,

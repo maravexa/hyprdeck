@@ -94,6 +94,21 @@ refresh_minutes  = 30
 
 [modules.workspaces]
 hide_empty = true
+
+# Display modes for status modules (lunar, sound, network)
+# "icon"    — square icon only (default, preserves existing layout)
+# "verbose" — double-wide: icon in left half, numeric readout in right half
+#               lunar   → illumination percentage, e.g. "87%"
+#               sound   → master volume percentage, e.g. "75%"  (clamped 0–100)
+#               network → signal strength "-45 dBm" (Wi-Fi) or link speed "1Gb" (wired)
+[modules.lunar]
+display = "verbose"
+
+[modules.sound]
+display = "verbose"
+
+[modules.network]
+display = "verbose"
 ```
 
 ### Run

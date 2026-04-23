@@ -192,11 +192,7 @@ impl PopupState {
     ///
     /// `content_fn` is only called when opening a new popup; it is not called
     /// when closing.
-    pub fn toggle(
-        &mut self,
-        module_id: &str,
-        content_fn: impl FnOnce() -> Box<dyn PopupContent>,
-    ) {
+    pub fn toggle(&mut self, module_id: &str, content_fn: impl FnOnce() -> Box<dyn PopupContent>) {
         tracing::info!("popup.toggle called for '{}'", module_id);
         if self.active_module.as_deref() == Some(module_id) {
             tracing::info!("Closing popup for '{}'", module_id);
@@ -347,11 +343,7 @@ impl PopupState {
     ///
     /// Returns `None` if no popup is open. If the result is [`PopupEventResult::Close`]
     /// the popup is automatically closed before returning.
-    pub fn handle_event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Rect,
-    ) -> Option<PopupEventResult> {
+    pub fn handle_event(&mut self, event: &InputEvent, bounds: Rect) -> Option<PopupEventResult> {
         let content = self.content.as_mut()?;
         let result = content.handle_event(event, bounds);
         match &result {

@@ -8,7 +8,9 @@ use crate::autohide::{AnimPhase, AutoHideMode, AutoHideState};
 use crate::geometry::{DisplayGeometry, Edge, Point, Rect, Size};
 use crate::ipc::event::HyprEvent;
 use crate::layout::{LayoutEngine, LayoutResult, ModuleGroups, ModuleSizeProvider};
-use crate::module::{EventResult, InputEvent, MouseButton, PanelModule, ThemeContext, UpdateContext};
+use crate::module::{
+    EventResult, InputEvent, MouseButton, PanelModule, ThemeContext, UpdateContext,
+};
 use crate::popup::PopupState;
 use crate::render::Canvas;
 
@@ -217,7 +219,11 @@ impl Panel {
             for (id, bounds) in &layout.module_bounds {
                 tracing::debug!(
                     "  module '{}': x={:.0} y={:.0} w={:.0} h={:.0}",
-                    id, bounds.x, bounds.y, bounds.width, bounds.height
+                    id,
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height
                 );
             }
         }
@@ -237,7 +243,9 @@ impl Panel {
 
         // Hit test: find which module the event lands on
         let Some(layout) = &self.last_layout else {
-            tracing::warn!("Panel::handle_input: no layout available for hit test — panel has not rendered yet");
+            tracing::warn!(
+                "Panel::handle_input: no layout available for hit test — panel has not rendered yet"
+            );
             return InputResult::None;
         };
 
@@ -254,11 +262,11 @@ impl Panel {
                 if bounds.contains(pt) {
                     hit_any = true;
                     // Stage 4: log every module hit.
-                    if matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }) {
-                        tracing::info!(
-                            "HIT module '{}' at ({:.0}, {:.0})",
-                            module_id, pt.x, pt.y
-                        );
+                    if matches!(
+                        &event,
+                        InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }
+                    ) {
+                        tracing::info!("HIT module '{}' at ({:.0}, {:.0})", module_id, pt.x, pt.y);
                     }
 
                     // Left-click on a popup-capable module toggles its popup.
@@ -278,8 +286,8 @@ impl Panel {
                             tracing::info!("Toggling popup for module '{}'", module_id);
                             // Record whether this module's popup was already open
                             // so we can distinguish open vs close after the toggle.
-                            let was_open = self.popup.active_module.as_deref()
-                                == Some(module_id.as_str());
+                            let was_open =
+                                self.popup.active_module.as_deref() == Some(module_id.as_str());
                             let content = self
                                 .modules
                                 .iter()
@@ -302,8 +310,10 @@ impl Panel {
                         }
                     }
 
-                    if let Some(module) =
-                        self.modules.iter_mut().find(|m| m.id() == module_id.as_str())
+                    if let Some(module) = self
+                        .modules
+                        .iter_mut()
+                        .find(|m| m.id() == module_id.as_str())
                     {
                         match module.handle_event(&event, *bounds) {
                             EventResult::Action(action) => return InputResult::Action(action),
@@ -318,11 +328,15 @@ impl Panel {
             }
             // Stage 4: warn when a click lands outside every module's bounds.
             if !hit_any
-                && matches!(&event, InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. })
+                && matches!(
+                    &event,
+                    InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }
+                )
             {
                 tracing::warn!(
                     "Click at ({:.0}, {:.0}) missed all {} module bound(s)",
-                    pt.x, pt.y,
+                    pt.x,
+                    pt.y,
                     layout.module_bounds.len()
                 );
             }
@@ -342,7 +356,8 @@ impl Panel {
         width: u32,
         height: u32,
     ) {
-        self.popup.attach_surface(layer_surface, pool, width, height);
+        self.popup
+            .attach_surface(layer_surface, pool, width, height);
     }
 
     /// Notify the panel that the cursor entered its surface.

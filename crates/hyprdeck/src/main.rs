@@ -10,8 +10,10 @@ use smithay_client_toolkit::{
     output::{OutputHandler, OutputState as SctkOutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::pointer::{
+        BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, PointerEvent, PointerEventKind, PointerHandler,
+    },
     seat::{Capability, SeatHandler, SeatState},
-    seat::pointer::{BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, PointerEvent, PointerEventKind, PointerHandler},
     shell::{
         WaylandSurface,
         wlr_layer::{
@@ -28,7 +30,9 @@ use wayland_client::{
 };
 
 use hyprdeck_core::ipc::HyprIpc;
-use hyprdeck_core::{App, Edge, InputEvent, InputResult, MouseButton, PopupEventResult, Rect, dispatch_action};
+use hyprdeck_core::{
+    App, Edge, InputEvent, InputResult, MouseButton, PopupEventResult, Rect, dispatch_action,
+};
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -81,13 +85,24 @@ impl AppState {
             };
             let panel = &output.panels[panel_idx];
             let Some(content) = &panel.popup.content else {
-                warn!("open_popup called but popup.content is None for '{}'", module_id);
+                warn!(
+                    "open_popup called but popup.content is None for '{}'",
+                    module_id
+                );
                 return;
             };
             let size = content.desired_size(&panel.theme_ctx);
             let w = (size.width.ceil() as u32).max(1);
             let h = (size.height.ceil() as u32).max(1);
-            (w, h, panel.edge, panel.surface_width, panel.surface_height, output.width, output.height)
+            (
+                w,
+                h,
+                panel.edge,
+                panel.surface_width,
+                panel.surface_height,
+                output.width,
+                output.height,
+            )
         };
 
         let wl_output = self.wl_outputs.get(output_name).cloned();
@@ -221,7 +236,10 @@ impl AppState {
         qh: &QueueHandle<AppState>,
     ) {
         match result {
-            InputResult::OpenPopup { module_id, module_bounds } => {
+            InputResult::OpenPopup {
+                module_id,
+                module_bounds,
+            } => {
                 self.create_popup_surface_for_panel(
                     output_name,
                     panel_idx,
@@ -243,10 +261,7 @@ impl AppState {
     ///
     /// Searches panel layer surfaces only (not popup surfaces).  Used in
     /// [`PointerHandler::pointer_frame`] to route events to the correct panel.
-    fn find_panel_for_surface(
-        &self,
-        surface: &wl_surface::WlSurface,
-    ) -> Option<(String, usize)> {
+    fn find_panel_for_surface(&self, surface: &wl_surface::WlSurface) -> Option<(String, usize)> {
         let target_id = surface.id();
         for (output_name, output) in &self.app.outputs {
             for (panel_idx, panel) in output.panels.iter().enumerate() {
@@ -264,10 +279,7 @@ impl AppState {
     ///
     /// Used in [`PointerHandler::pointer_frame`] to route pointer events that land
     /// on a popup overlay surface to the correct panel's popup content.
-    fn find_popup_owner(
-        &self,
-        surface: &wl_surface::WlSurface,
-    ) -> Option<(String, usize)> {
+    fn find_popup_owner(&self, surface: &wl_surface::WlSurface) -> Option<(String, usize)> {
         let target_id = surface.id();
         for (output_name, output) in &self.app.outputs {
             for (panel_idx, panel) in output.panels.iter().enumerate() {
@@ -296,18 +308,22 @@ impl AppState {
     /// the event via [`PopupState::handle_event`].  If the popup returns an
     /// [`PopupEventResult::Action`], the popup is closed and the action is
     /// dispatched in a background tokio task.
-    fn dispatch_popup_event(
-        &mut self,
-        output_name: &str,
-        panel_idx: usize,
-        event: InputEvent,
-    ) {
+    fn dispatch_popup_event(&mut self, output_name: &str, panel_idx: usize, event: InputEvent) {
         let hypr_socket = self.hypr_socket.clone();
 
-        let Some(output) = self.app.outputs.get_mut(output_name) else { return; };
-        let Some(panel) = output.panels.get_mut(panel_idx) else { return; };
+        let Some(output) = self.app.outputs.get_mut(output_name) else {
+            return;
+        };
+        let Some(panel) = output.panels.get_mut(panel_idx) else {
+            return;
+        };
 
-        let bounds = Rect::new(0.0, 0.0, panel.popup.width as f32, panel.popup.height as f32);
+        let bounds = Rect::new(
+            0.0,
+            0.0,
+            panel.popup.width as f32,
+            panel.popup.height as f32,
+        );
 
         let result = panel.popup.handle_event(&event, bounds);
 
@@ -524,8 +540,7 @@ impl PointerHandler for AppState {
                 PointerEventKind::Motion { .. } => {
                     trace!(
                         "POINTER Motion ({:.1}, {:.1})",
-                        event.position.0,
-                        event.position.1
+                        event.position.0, event.position.1
                     );
                     if let Some((output_name, panel_idx)) =
                         self.find_panel_for_surface(&event.surface)
@@ -550,9 +565,7 @@ impl PointerHandler for AppState {
                 PointerEventKind::Press { button, .. } => {
                     info!(
                         "POINTER Press button={:#x} at ({:.1}, {:.1})",
-                        button,
-                        event.position.0,
-                        event.position.1
+                        button, event.position.0, event.position.1
                     );
                     let mb = match *button {
                         BTN_LEFT => Some(MouseButton::Left),
@@ -573,8 +586,7 @@ impl PointerHandler for AppState {
                                 button: mb,
                             };
                             let result = {
-                                let output =
-                                    self.app.outputs.get_mut(&output_name).unwrap();
+                                let output = self.app.outputs.get_mut(&output_name).unwrap();
                                 output.panels[panel_idx].handle_input(input)
                             };
                             // Close any popup that wasn't toggled by this click.
@@ -605,9 +617,7 @@ impl PointerHandler for AppState {
                 PointerEventKind::Release { button, .. } => {
                     info!(
                         "POINTER Release button={:#x} at ({:.1}, {:.1})",
-                        button,
-                        event.position.0,
-                        event.position.1
+                        button, event.position.0, event.position.1
                     );
                     let mb = match *button {
                         BTN_LEFT => Some(MouseButton::Left),
@@ -762,7 +772,10 @@ impl LayerShellHandler for AppState {
             // the compositor (e.g. the user dismissed it externally).
             for panel in &mut output.panels {
                 if panel.popup.surface_id() == Some(surface_id.clone()) {
-                    info!("Popup surface closed by compositor for module {:?}", panel.popup.active_module);
+                    info!(
+                        "Popup surface closed by compositor for module {:?}",
+                        panel.popup.active_module
+                    );
                     panel.popup.close();
                     break;
                 }
@@ -784,7 +797,10 @@ impl LayerShellHandler for AppState {
         _serial: u32,
     ) {
         let surface_id = layer.wl_surface().id();
-        debug!("Layer configure event for surface {:?}, size {:?}", surface_id, configure.new_size);
+        debug!(
+            "Layer configure event for surface {:?}, size {:?}",
+            surface_id, configure.new_size
+        );
 
         // Search for either a panel surface or a popup surface matching this id.
         let mut panel_target: Option<(String, usize)> = None;
@@ -809,7 +825,10 @@ impl LayerShellHandler for AppState {
         // ── Popup configure ───────────────────────────────────────────────────
         if let Some((output_name, panel_idx)) = popup_target {
             let (w, h) = configure.new_size;
-            info!("Popup configure {}x{} for panel {} on '{}'", w, h, panel_idx, output_name);
+            info!(
+                "Popup configure {}x{} for panel {} on '{}'",
+                w, h, panel_idx, output_name
+            );
             // SCTK sends ack_configure automatically before invoking this callback.
             debug!("Popup configure ack'd");
 
@@ -843,7 +862,10 @@ impl LayerShellHandler for AppState {
             debug!("Popup marked configured=true, dirty=true");
             debug!("Popup has content: {}", panel.popup.content.is_some());
             debug!("Popup has canvas: {}", panel.popup.canvas.is_some());
-            debug!("Popup has layer_surface: {}", panel.popup.layer_surface.is_some());
+            debug!(
+                "Popup has layer_surface: {}",
+                panel.popup.layer_surface.is_some()
+            );
             debug!(
                 "render_popup called for panel {} on '{}'",
                 panel_idx, output_name
@@ -1188,4 +1210,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("HyprDeck shutting down");
     Ok(())
 }
-

@@ -80,7 +80,7 @@ pub struct ModuleConfigSchema {
 
 /// A single configurable option declared by a module.
 pub struct ConfigField {
-    /// TOML key used to set this field in `config.toml`.
+    /// TOML key used to set this field in `hyprdeck.toml`.
     pub key: String,
     /// Short human-readable label for the settings UI.
     pub label: String,

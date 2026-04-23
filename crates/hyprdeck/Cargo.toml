@@ -18,3 +18,7 @@ tracing-subscriber = { workspace = true }
 chrono           = { workspace = true }
 wayland-client   = { workspace = true }
 smithay-client-toolkit = { workspace = true }
+clap             = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+assert_cmd = "2"

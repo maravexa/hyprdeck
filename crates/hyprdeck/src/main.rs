@@ -959,7 +959,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("HyprDeck starting");
 
     // ── 2. Load config ────────────────────────────────────
-    let config_path = user_config_path();
+    let config_path = hyprdeck_core::default_config_path()?;
     info!("Loading config from {:?}", config_path);
     let config = hyprdeck_core::Config::load(&config_path)?;
     info!("Theme: {}", config.theme);
@@ -1189,13 +1189,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-/// Return the path to `~/.config/hypr/hyprdeck.toml`.
-fn user_config_path() -> std::path::PathBuf {
-    let config_dir = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").unwrap_or_default();
-            std::path::Path::new(&home).join(".config")
-        });
-    config_dir.join("hypr").join("hyprdeck.toml")
-}

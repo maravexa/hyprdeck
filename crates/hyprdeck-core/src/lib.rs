@@ -21,7 +21,7 @@ pub use tiny_skia::Pixmap;
 pub use action::{Action, ActionError, dispatch_action};
 pub use app::{App, ModuleFactory};
 pub use autohide::{AnimPhase, AutoHideMode, AutoHideState};
-pub use config::{Config, ModuleConfigs, ThemeOverrides};
+pub use config::{Config, ConfigPathError, ModuleConfigs, ThemeOverrides, default_config_path};
 pub use geometry::{DisplayGeometry, Edge, Point, Rect, Size};
 pub use ipc::{
     CommandClient, EventSocket, HyprEvent, HyprIpc, HyprState, IpcError, MonitorInfo, WindowInfo,

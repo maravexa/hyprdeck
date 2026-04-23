@@ -825,6 +825,31 @@ fn build_lit_path(
     pb.finish()
 }
 
+// ── Panel-level rendering ─────────────────────────────────────────────────────
+
+/// Render a complete panel frame: clear canvas, draw background, render each
+/// module into its layout-assigned bounds, then draw separators.
+pub fn render_panel(
+    canvas: &mut Canvas,
+    layout: &LayoutResult,
+    modules: &[Box<dyn PanelModule>],
+    style: &ResolvedStyle,
+    theme_ctx: &ThemeContext,
+) {
+    // Clear to transparent
+    canvas.clear();
+
+    // Draw panel background
+    canvas.draw_panel_background(layout.background_bounds, style);
+
+    // Render each module into its assigned bounds
+    for (module_id, bounds) in &layout.module_bounds {
+        if let Some(module) = modules.iter().find(|m| m.id() == module_id) {
+            module.render(canvas.pixmap_mut(), theme_ctx, *bounds);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,30 +913,4 @@ mod tests {
                 .unwrap();
         }
     }
-}
-
-// ── Panel-level rendering ─────────────────────────────────────────────────────
-
-/// Render a complete panel frame: clear canvas, draw background, render each
-/// module into its layout-assigned bounds, then draw separators.
-pub fn render_panel(
-    canvas: &mut Canvas,
-    layout: &LayoutResult,
-    modules: &[Box<dyn PanelModule>],
-    style: &ResolvedStyle,
-    theme_ctx: &ThemeContext,
-) {
-    // Clear to transparent
-    canvas.clear();
-
-    // Draw panel background
-    canvas.draw_panel_background(layout.background_bounds, style);
-
-    // Render each module into its assigned bounds
-    for (module_id, bounds) in &layout.module_bounds {
-        if let Some(module) = modules.iter().find(|m| m.id() == module_id) {
-            module.render(canvas.pixmap_mut(), theme_ctx, *bounds);
-        }
-    }
-
 }

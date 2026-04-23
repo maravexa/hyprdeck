@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking
+
+- Config file renamed to `hyprdeck.toml` and moved to `$XDG_CONFIG_HOME/hypr/hyprdeck.toml`
+  (fallback `~/.config/hypr/hyprdeck.toml`). No automatic migration; users must move
+  their existing `config.toml` manually.
+- A missing config file is now a hard error instead of silently falling back to
+  the `gnome_classic` theme defaults. The error message includes the exact path
+  that was checked.
+- `hyprdeck_core::default_config_path()` is now the canonical path-resolution
+  function; downstream tools (HyprCube) should call it rather than re-implementing
+  the XDG lookup.
+
 ## [0.4.0] - 2026-04-10
 
 ### Added

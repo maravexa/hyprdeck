@@ -289,6 +289,26 @@ pub fn effective_font_size(available_height: f32, configured_size: f32) -> f32 {
     height_derived.max(configured_size)
 }
 
+/// Compute the canonical icon size for a module slot.
+///
+/// The icon is a square with a 1 px inset on each side, sized to the shorter
+/// axis of the slot so it fits without clipping even in non-square slots (e.g.
+/// verbose-mode icon half, vertical panels).
+pub fn canonical_icon_size(slot: Rect) -> f32 {
+    (slot.width.min(slot.height) - 2.0).max(1.0)
+}
+
+/// Compute a centered square destination rect for an icon within a module slot.
+///
+/// The returned rect has side length `icon_size`, centered on both axes within
+/// `slot`.  Its top-left is at `(slot.x + (slot.width  - icon_size) / 2,
+///                               slot.y + (slot.height - icon_size) / 2)`.
+pub fn centered_icon_rect(slot: Rect, icon_size: f32) -> Rect {
+    let x = slot.x + (slot.width - icon_size) / 2.0;
+    let y = slot.y + (slot.height - icon_size) / 2.0;
+    Rect::new(x, y, icon_size, icon_size)
+}
+
 // ── Internals ─────────────────────────────────────────────────────────────────
 
 fn with_font<F, R>(f: F) -> R
@@ -548,6 +568,46 @@ mod tests {
     fn effective_font_size_uses_height_when_larger() {
         // 40px bar → floor(40 * 0.65) = 26.
         assert_eq!(effective_font_size(40.0, 14.0), 26.0);
+    }
+
+    #[test]
+    fn centered_icon_rect_topleft_formula() {
+        // Top-left must be at ((W - S) / 2, (H - S) / 2) relative to slot origin.
+        let slot = Rect::new(0.0, 0.0, 80.0, 60.0);
+        let s = 40.0_f32;
+        let r = centered_icon_rect(slot, s);
+        assert_eq!(r.x, (80.0_f32 - s) / 2.0);
+        assert_eq!(r.y, (60.0_f32 - s) / 2.0);
+        assert_eq!(r.width, s);
+        assert_eq!(r.height, s);
+    }
+
+    #[test]
+    fn centered_icon_rect_with_nonzero_slot_origin() {
+        let slot = Rect::new(10.0, 20.0, 80.0, 60.0);
+        let s = 40.0_f32;
+        let r = centered_icon_rect(slot, s);
+        assert_eq!(r.x, 10.0 + (80.0_f32 - s) / 2.0);
+        assert_eq!(r.y, 20.0 + (60.0_f32 - s) / 2.0);
+    }
+
+    #[test]
+    fn canonical_icon_size_uses_shorter_axis_minus_two() {
+        // For a 26 × 24 slot (wider than tall) the shorter axis is 24, giving 22.
+        let slot = Rect::new(0.0, 0.0, 26.0, 24.0);
+        assert_eq!(canonical_icon_size(slot), 22.0);
+    }
+
+    #[test]
+    fn canonical_icon_size_square_slot() {
+        let slot = Rect::new(0.0, 0.0, 24.0, 24.0);
+        assert_eq!(canonical_icon_size(slot), 22.0);
+    }
+
+    #[test]
+    fn canonical_icon_size_minimum_is_one() {
+        let slot = Rect::new(0.0, 0.0, 1.0, 1.0);
+        assert_eq!(canonical_icon_size(slot), 1.0);
     }
 
     #[test]

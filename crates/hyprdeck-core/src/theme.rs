@@ -159,6 +159,11 @@ pub struct StyleDefinition {
     /// Gap inserted between the icon half and text half in verbose display mode,
     /// in logical pixels. Defaults to `bar_height / 8` when absent.
     pub verbose_text_padding: Option<f32>,
+    /// Horizontal (or vertical, for vertical panels) space between adjacent module
+    /// slots in logical pixels. Applied between every adjacent pair of modules
+    /// within a group; does not apply at the bar's outer edges (those are
+    /// controlled by `padding`). Defaults to `0.0` when absent.
+    pub module_gap: Option<f32>,
 }
 
 impl ThemeDefinition {

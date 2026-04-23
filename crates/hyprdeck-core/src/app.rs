@@ -348,6 +348,8 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
 
     let border_radius = style_def.and_then(|s| s.border_radius).unwrap_or(0.0);
 
+    let module_gap = style_def.and_then(|s| s.module_gap).unwrap_or(0.0);
+
     let opacity = config
         .theme_overrides
         .bar_opacity
@@ -387,6 +389,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
             color: separator_color,
             ..ResolvedSeparator::default()
         },
+        module_gap,
         module_styles,
     }
 }

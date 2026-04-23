@@ -164,13 +164,8 @@ impl PanelModule for NetworkModule {
 
         match self.config.display {
             DisplayMode::Icon => {
-                let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-                let icon_rect = Rect::new(
-                    bounds.x + (bounds.width - icon_dim) / 2.0,
-                    bounds.y + (bounds.height - icon_dim) / 2.0,
-                    icon_dim,
-                    icon_dim,
-                );
+                let icon_size = render_utils::canonical_icon_size(bounds);
+                let icon_rect = render_utils::centered_icon_rect(bounds, icon_size);
                 if self.snapshot.is_wireless {
                     draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
                 } else {
@@ -179,13 +174,8 @@ impl PanelModule for NetworkModule {
             }
             DisplayMode::Verbose => {
                 let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
-                let icon_dim = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-                let icon_rect = Rect::new(
-                    icon_half.x + (icon_half.width - icon_dim) / 2.0,
-                    icon_half.y + (icon_half.height - icon_dim) / 2.0,
-                    icon_dim,
-                    icon_dim,
-                );
+                let icon_size = render_utils::canonical_icon_size(icon_half);
+                let icon_rect = render_utils::centered_icon_rect(icon_half, icon_size);
                 if self.snapshot.is_wireless {
                     draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
                 } else {

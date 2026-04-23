@@ -593,6 +593,8 @@ pub struct ResolvedStyle {
     pub background_opacity: f32,
     /// Separator line styling between adjacent modules.
     pub separator: ResolvedSeparator,
+    /// Blank space between adjacent module slots in logical pixels.
+    pub module_gap: f32,
     /// Per-module color overrides for this panel.
     pub module_styles: ResolvedModuleStyles,
 }
@@ -841,6 +843,7 @@ mod tests {
             border_radius: 0.0,
             background_opacity: 0.9,
             separator: ResolvedSeparator::default(),
+            module_gap: 0.0,
             module_styles: ResolvedModuleStyles::default(),
         }
     }

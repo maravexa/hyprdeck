@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Sound module icon now scales to theme icon size and centers correctly in its
+  slot (was rendering at intrinsic size in the top-left corner).
+- Adjacent modules on the status bar now render with configurable horizontal
+  spacing (was rendering with no gap). Set `module_gap` in a theme's `[style]`
+  block to control the spacing; all five shipped themes now carry per-theme
+  values (2–6 px) that match each theme's visual language.
+
 ### Added
 
 - Icon-only / verbose display modes for `lunar`, `sound`, and `network` modules,

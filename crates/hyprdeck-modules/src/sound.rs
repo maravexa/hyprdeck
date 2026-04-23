@@ -139,7 +139,7 @@ impl PanelModule for SoundModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
+        let h = theme.fonts.size * 2.0;
         match self.config.display {
             DisplayMode::Icon => Size::new(h, h),
             DisplayMode::Verbose => Size::new(h * 2.0, h),
@@ -206,14 +206,15 @@ impl PanelModule for SoundModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let icon = speaker_icon(self.state.volume_percent, self.state.muted);
-        let icon_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
 
         match self.config.display {
             DisplayMode::Icon => {
+                let icon_size = render_utils::canonical_icon_size(bounds);
+                let icon_rect = render_utils::centered_icon_rect(bounds, icon_size);
                 render_utils::draw_text_centered(
                     canvas,
                     icon,
-                    bounds,
+                    icon_rect,
                     &theme.fonts.family,
                     icon_size,
                     theme.colors.foreground,
@@ -221,10 +222,12 @@ impl PanelModule for SoundModule {
             }
             DisplayMode::Verbose => {
                 let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
+                let icon_size = render_utils::canonical_icon_size(icon_half);
+                let icon_rect = render_utils::centered_icon_rect(icon_half, icon_size);
                 render_utils::draw_text_centered(
                     canvas,
                     icon,
-                    icon_half,
+                    icon_rect,
                     &theme.fonts.family,
                     icon_size,
                     theme.colors.foreground,

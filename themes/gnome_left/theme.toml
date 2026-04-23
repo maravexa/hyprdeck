@@ -40,3 +40,6 @@ opacity               = 0.95
 # verbose mode in the vertical sidebar would render as a tall widget which is
 # unusual but supported.
 verbose_text_padding  = 2.0
+# Blank space between adjacent module slots (logical px).
+# Minimal shell-inspired bar; 4 px keeps icons legible without crowding.
+module_gap            = 4.0

@@ -49,3 +49,6 @@ border_radius         = 0.0
 opacity               = 1.0
 # Gap between icon and readout halves in verbose display mode (logical px).
 verbose_text_padding  = 3.0
+# Blank space between adjacent module slots (logical px).
+# Classic GNOME 2 panels use a moderate gap matching their balanced visual density.
+module_gap            = 3.0

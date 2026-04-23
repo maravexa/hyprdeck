@@ -304,8 +304,8 @@ impl PanelModule for LunarModule {
 
         match self.config.display {
             DisplayMode::Icon => {
-                let icon_size = bounds.height - 2.0;
-                let icon_bounds = Rect::new(bounds.x + 1.0, bounds.y + 1.0, icon_size, icon_size);
+                let icon_size = render_utils::canonical_icon_size(bounds);
+                let icon_bounds = render_utils::centered_icon_rect(bounds, icon_size);
                 render_utils::draw_moon_phase(
                     canvas,
                     icon_bounds,
@@ -314,11 +314,11 @@ impl PanelModule for LunarModule {
                     dark_color,
                 );
                 if self.config.show_label && !self.cached_name.is_empty() {
-                    let label_x = bounds.x + icon_size + 4.0;
+                    let label_x = icon_bounds.x + icon_bounds.width + 4.0;
                     let label_rect = Rect::new(
                         label_x,
                         bounds.y,
-                        bounds.width - icon_size - 4.0,
+                        bounds.width - (label_x - bounds.x),
                         bounds.height,
                     );
                     let bold = theme
@@ -340,7 +340,8 @@ impl PanelModule for LunarModule {
             }
             DisplayMode::Verbose => {
                 let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
-                let icon_bounds = icon_half.inset(1.0, 1.0, 1.0, 1.0);
+                let icon_size = render_utils::canonical_icon_size(icon_half);
+                let icon_bounds = render_utils::centered_icon_rect(icon_half, icon_size);
                 render_utils::draw_moon_phase(
                     canvas,
                     icon_bounds,

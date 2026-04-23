@@ -188,6 +188,7 @@ fn place_group(
 ///
 /// Lays out start/center/end groups along `panel_main_extent` (width for H, height for V),
 /// with modules stretching to fill `panel_cross_extent` (height for H, width for V).
+#[allow(clippy::too_many_arguments)]
 pub fn linear_layout(
     axis: Axis,
     groups: &ModuleGroups,
@@ -196,6 +197,7 @@ pub fn linear_layout(
     panel_cross_extent: f32,
     padding: &Padding,
     separator: &ResolvedSeparator,
+    module_gap: f32,
 ) -> Vec<(String, Rect)> {
     let (pad_main_start, pad_main_end, pad_cross_start, pad_cross_end) = match axis {
         Axis::Horizontal => (padding.left, padding.right, padding.top, padding.bottom),
@@ -203,12 +205,13 @@ pub fn linear_layout(
     };
 
     let module_cross = panel_cross_extent - pad_cross_start - pad_cross_end;
-    let sep_gap = separator_gap(separator);
+    // Total inter-module gap: blank space (module_gap) plus optional separator space.
+    let inter_module_gap = module_gap + separator_gap(separator);
 
     // Measure each group's total main-axis extent.
-    let _start_extent = group_main_extent(&groups.start, sizes, axis, sep_gap);
-    let center_extent = group_main_extent(&groups.center, sizes, axis, sep_gap);
-    let end_extent = group_main_extent(&groups.end, sizes, axis, sep_gap);
+    let _start_extent = group_main_extent(&groups.start, sizes, axis, inter_module_gap);
+    let center_extent = group_main_extent(&groups.center, sizes, axis, inter_module_gap);
+    let end_extent = group_main_extent(&groups.end, sizes, axis, inter_module_gap);
 
     let mut result = Vec::new();
 
@@ -221,7 +224,7 @@ pub fn linear_layout(
         start_cursor,
         pad_cross_start,
         module_cross,
-        sep_gap,
+        inter_module_gap,
         &mut result,
     );
 
@@ -234,7 +237,7 @@ pub fn linear_layout(
         end_cursor,
         pad_cross_start,
         module_cross,
-        sep_gap,
+        inter_module_gap,
         &mut result,
     );
 
@@ -271,10 +274,136 @@ pub fn linear_layout(
             center_start,
             pad_cross_start,
             module_cross,
-            sep_gap,
+            inter_module_gap,
             &mut result,
         );
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geometry::Size;
+    use crate::panel::{Padding, ResolvedSeparator};
+
+    struct FixedSizes(Vec<(&'static str, f32)>);
+
+    impl ModuleSizeProvider for FixedSizes {
+        fn desired_size(&self, id: &str) -> Size {
+            self.0
+                .iter()
+                .find(|(name, _)| *name == id)
+                .map(|(_, w)| Size::new(*w, 24.0))
+                .unwrap_or_default()
+        }
+    }
+
+    fn no_separator() -> ResolvedSeparator {
+        ResolvedSeparator {
+            visible: false,
+            ..ResolvedSeparator::default()
+        }
+    }
+
+    fn no_padding() -> Padding {
+        Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        }
+    }
+
+    #[test]
+    fn module_gap_spaces_adjacent_modules_in_start_group() {
+        let groups = ModuleGroups {
+            start: vec!["a".into(), "b".into()],
+            center: vec![],
+            end: vec![],
+        };
+        let sizes = FixedSizes(vec![("a", 30.0), ("b", 50.0)]);
+        let module_gap = 6.0_f32;
+
+        let result = linear_layout(
+            Axis::Horizontal,
+            &groups,
+            &sizes,
+            400.0,
+            24.0,
+            &no_padding(),
+            &no_separator(),
+            module_gap,
+        );
+
+        // Module "a" starts at x=0, width=30.
+        let a = result.iter().find(|(id, _)| id == "a").unwrap().1;
+        assert_eq!(a.x, 0.0);
+        assert_eq!(a.width, 30.0);
+
+        // Module "b" starts at x = 30 + 6 = 36.
+        let b = result.iter().find(|(id, _)| id == "b").unwrap().1;
+        assert_eq!(b.x, 36.0);
+        assert_eq!(b.width, 50.0);
+    }
+
+    #[test]
+    fn zero_module_gap_places_modules_touching() {
+        let groups = ModuleGroups {
+            start: vec!["a".into(), "b".into()],
+            center: vec![],
+            end: vec![],
+        };
+        let sizes = FixedSizes(vec![("a", 30.0), ("b", 50.0)]);
+
+        let result = linear_layout(
+            Axis::Horizontal,
+            &groups,
+            &sizes,
+            400.0,
+            24.0,
+            &no_padding(),
+            &no_separator(),
+            0.0,
+        );
+
+        let a = result.iter().find(|(id, _)| id == "a").unwrap().1;
+        let b = result.iter().find(|(id, _)| id == "b").unwrap().1;
+        // With no gap, b starts immediately after a.
+        assert_eq!(b.x, a.x + a.width);
+    }
+
+    #[test]
+    fn module_gap_combined_with_separator_gap() {
+        let groups = ModuleGroups {
+            start: vec!["a".into(), "b".into()],
+            center: vec![],
+            end: vec![],
+        };
+        let sizes = FixedSizes(vec![("a", 30.0), ("b", 50.0)]);
+        let separator = ResolvedSeparator {
+            visible: true,
+            width: 1.0,
+            margin: 3.0,
+            ..ResolvedSeparator::default()
+        };
+        let module_gap = 4.0_f32;
+        // inter_module_gap = module_gap + margin + width + margin = 4 + 3 + 1 + 3 = 11
+
+        let result = linear_layout(
+            Axis::Horizontal,
+            &groups,
+            &sizes,
+            400.0,
+            24.0,
+            &no_padding(),
+            &separator,
+            module_gap,
+        );
+
+        let a = result.iter().find(|(id, _)| id == "a").unwrap().1;
+        let b = result.iter().find(|(id, _)| id == "b").unwrap().1;
+        assert_eq!(b.x, a.x + a.width + 11.0);
+    }
 }

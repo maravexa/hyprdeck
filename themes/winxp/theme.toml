@@ -35,3 +35,6 @@ opacity               = 1.0
 # Gap between icon and readout halves in verbose display mode (logical px).
 # Defaults to bar_height / 8 when absent.
 verbose_text_padding  = 3.0
+# Blank space between adjacent module slots (logical px).
+# XP taskbar is compact and dense; 2 px matches the original button spacing.
+module_gap            = 2.0

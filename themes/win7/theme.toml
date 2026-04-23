@@ -34,3 +34,6 @@ border_radius         = 3.0
 opacity               = 0.85
 # Gap between icon and readout halves in verbose display mode (logical px).
 verbose_text_padding  = 4.0
+# Blank space between adjacent module slots (logical px).
+# Win7 Aero taskbar is more generous with spacing than XP.
+module_gap            = 4.0

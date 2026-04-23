@@ -42,3 +42,7 @@ opacity               = 0.75
 # use icon mode regardless of user config because the dock's magnification
 # geometry assumes square icons.
 verbose_text_padding  = 4.0
+# Blank space between adjacent module slots (logical px).
+# macOS menu bar has the most generous spacing of the five themes.
+# The dock layout uses its own icon_gap field and ignores this value.
+module_gap            = 6.0

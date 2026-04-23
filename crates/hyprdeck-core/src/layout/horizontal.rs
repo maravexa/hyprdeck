@@ -56,6 +56,7 @@ impl HorizontalLayout {
             panel_height,
             &style.padding,
             &style.separator,
+            style.module_gap,
         );
 
         let total_size = Size::new(panel_width, panel_height);

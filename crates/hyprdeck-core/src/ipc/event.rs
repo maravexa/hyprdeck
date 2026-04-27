@@ -108,6 +108,10 @@ impl HyprState {
                 {
                     mon.active_workspace = *id;
                 }
+                // Switching to a workspace acknowledges any pending alert.
+                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *id) {
+                    ws.has_urgent = false;
+                }
             }
             HyprEvent::WorkspaceAdded { id } => {
                 if !self.workspaces.iter().any(|ws| ws.id == *id) {
@@ -225,8 +229,13 @@ impl HyprState {
                     .map(|w| w.workspace_id);
                 match ws_id {
                     Some(ws_id) => {
-                        if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == ws_id) {
-                            ws.has_urgent = true;
+                        // Suppress the alert if the workspace is already the
+                        // active one on some monitor — the user can see it.
+                        let visible = self.monitors.iter().any(|m| m.active_workspace == ws_id);
+                        if !visible {
+                            if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == ws_id) {
+                                ws.has_urgent = true;
+                            }
                         }
                     }
                     None => {
@@ -259,6 +268,10 @@ impl HyprState {
                     debug!(monitor = %name, "focusedmon for unknown monitor");
                 }
                 self.active_workspace = *workspace_id;
+                // The newly focused workspace is in view — clear any alert.
+                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *workspace_id) {
+                    ws.has_urgent = false;
+                }
             }
             HyprEvent::Fullscreen { enter } => {
                 let addr = self.active_window.as_mut().map(|active| {
@@ -914,6 +927,50 @@ mod tests {
             address: "zzzz".to_owned(),
         });
         assert!(s.workspaces.iter().all(|w| !w.has_urgent));
+    }
+
+    #[test]
+    fn apply_urgent_skips_active_workspace() {
+        // The window "aabb" lives on workspace 1, which is active on DP-1.
+        // The user is already viewing it, so no alert should be raised.
+        let mut s = base_state();
+        s.apply_event(&HyprEvent::Urgent {
+            address: "aabb".to_owned(),
+        });
+        let ws1 = s.workspaces.iter().find(|w| w.id == 1).unwrap();
+        assert!(!ws1.has_urgent);
+    }
+
+    #[test]
+    fn workspace_changed_clears_urgent() {
+        let mut s = base_state();
+        s.apply_event(&HyprEvent::Urgent {
+            address: "ccdd".to_owned(),
+        });
+        assert!(s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
+        s.apply_event(&HyprEvent::WorkspaceChanged { id: 2 });
+        assert!(!s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
+    }
+
+    #[test]
+    fn focused_mon_clears_urgent_on_target_workspace() {
+        let mut s = base_state();
+        s.workspaces
+            .iter_mut()
+            .find(|w| w.id == 2)
+            .unwrap()
+            .has_urgent = true;
+        s.monitors.push(MonitorInfo {
+            name: "DP-2".to_owned(),
+            width: 1920,
+            height: 1080,
+            active_workspace: 1,
+        });
+        s.apply_event(&HyprEvent::ActiveMonitor {
+            name: "DP-2".to_owned(),
+            workspace_id: 2,
+        });
+        assert!(!s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
     }
 
     #[test]

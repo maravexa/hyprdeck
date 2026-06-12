@@ -159,7 +159,7 @@ impl PanelModule for NetworkModule {
         );
 
         let fg = theme.colors.foreground;
-        let dim = [fg[0], fg[1], fg[2], (fg[3] as f32 * 0.4) as u8];
+        let dim = render_utils::dim_color(fg, 0.4);
         let active = if self.snapshot.is_connected { fg } else { dim };
 
         match self.config.display {
@@ -173,23 +173,20 @@ impl PanelModule for NetworkModule {
                 }
             }
             DisplayMode::Verbose => {
-                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
-                let icon_size = render_utils::canonical_icon_size(icon_half);
-                let icon_rect = render_utils::centered_icon_rect(icon_half, icon_size);
-                if self.snapshot.is_wireless {
-                    draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
-                } else {
-                    draw_ethernet_icon(canvas, icon_rect, active);
-                }
                 let readout = self.verbose_readout();
-                let font = theme
-                    .fonts
-                    .bold_family
-                    .as_deref()
-                    .unwrap_or(&theme.fonts.family);
-                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-                render_utils::draw_text_centered(
-                    canvas, &readout, text_half, font, text_size, active,
+                render_utils::draw_verbose(
+                    canvas,
+                    bounds,
+                    theme,
+                    &readout,
+                    active,
+                    |canvas, icon_rect| {
+                        if self.snapshot.is_wireless {
+                            draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
+                        } else {
+                            draw_ethernet_icon(canvas, icon_rect, active);
+                        }
+                    },
                 );
             }
         }
@@ -549,7 +546,7 @@ impl PopupContent for NetworkPopup {
         let font = &theme.fonts.family;
         let bold = theme.fonts.bold_family.as_deref().unwrap_or(font);
         let font_size = 13.0;
-        let dim = dim_color(theme.colors.foreground, 0.65);
+        let dim = render_utils::dim_color(theme.colors.foreground, 0.65);
         let line_h = 22.0;
 
         if self.rows.is_empty() || (self.rows.len() == 1 && self.rows[0].interface.is_empty()) {
@@ -574,7 +571,7 @@ impl PopupContent for NetworkPopup {
                     canvas,
                     Point::new(bounds.x + 8.0, section_y - 1.0),
                     Point::new(bounds.x + bounds.width - 8.0, section_y - 1.0),
-                    dim_color(theme.colors.foreground, 0.2),
+                    render_utils::dim_color(theme.colors.foreground, 0.2),
                     1.0,
                 );
             }
@@ -669,11 +666,6 @@ impl PopupContent for NetworkPopup {
     fn update(&mut self) -> bool {
         false
     }
-}
-
-fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
-    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
-    [color[0], color[1], color[2], a]
 }
 
 #[cfg(test)]

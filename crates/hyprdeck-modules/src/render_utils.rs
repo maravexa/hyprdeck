@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
-use hyprdeck_core::{Color, Point, Rect};
+use hyprdeck_core::{Color, Point, Rect, ThemeContext};
 use tiny_skia::{FillRule, LineCap, Paint, PathBuilder, PixmapPaint, Stroke, Transform};
 
 // Re-export Pixmap so callers only need one import.
@@ -70,8 +70,13 @@ pub fn fill_rounded_rect_alpha(
     radius: f32,
     opacity: f32,
 ) {
+    fill_rounded_rect(pixmap, rect, dim_color(color, opacity), radius);
+}
+
+/// Multiply a color's alpha channel by `opacity` (clamped to 0.0–1.0).
+pub fn dim_color(color: Color, opacity: f32) -> Color {
     let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
-    fill_rounded_rect(pixmap, rect, [color[0], color[1], color[2], a], radius);
+    [color[0], color[1], color[2], a]
 }
 
 /// Draw a filled circle.
@@ -307,6 +312,62 @@ pub fn centered_icon_rect(slot: Rect, icon_size: f32) -> Rect {
     let x = slot.x + (slot.width - icon_size) / 2.0;
     let y = slot.y + (slot.height - icon_size) / 2.0;
     Rect::new(x, y, icon_size, icon_size)
+}
+
+// ── Verbose display mode ──────────────────────────────────────────────────────
+
+/// Split a verbose-mode slot into `(icon_half, text_half)` with `gap` logical
+/// pixels of blank space at the midline (`gap / 2` taken from each half).
+///
+/// `gap` is clamped to `bounds.width / 2` so tiny slots can never produce
+/// negative-width halves.
+pub fn verbose_split(bounds: Rect, gap: f32) -> (Rect, Rect) {
+    let gap = gap.clamp(0.0, bounds.width / 2.0);
+    let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
+    (
+        Rect::new(
+            icon_half.x,
+            icon_half.y,
+            icon_half.width - gap / 2.0,
+            icon_half.height,
+        ),
+        Rect::new(
+            text_half.x + gap / 2.0,
+            text_half.y,
+            text_half.width - gap / 2.0,
+            text_half.height,
+        ),
+    )
+}
+
+/// Draw a verbose-mode module: a square icon in the left half and a centered
+/// text readout in the right half, separated by the theme's
+/// `verbose_text_padding`.
+///
+/// The icon half is computed via [`verbose_split`] /
+/// [`canonical_icon_size`] / [`centered_icon_rect`] and handed to `draw_icon`;
+/// the readout is drawn with the bold family (falling back to the regular
+/// family) at [`effective_font_size`].
+pub fn draw_verbose(
+    canvas: &mut Pixmap,
+    bounds: Rect,
+    theme: &ThemeContext,
+    readout: &str,
+    text_color: Color,
+    draw_icon: impl FnOnce(&mut Pixmap, Rect),
+) {
+    let (icon_half, text_half) = verbose_split(bounds, theme.verbose_text_padding);
+    let icon_size = canonical_icon_size(icon_half);
+    let icon_rect = centered_icon_rect(icon_half, icon_size);
+    draw_icon(canvas, icon_rect);
+
+    let font = theme
+        .fonts
+        .bold_family
+        .as_deref()
+        .unwrap_or(&theme.fonts.family);
+    let text_size = effective_font_size(bounds.height, theme.fonts.size);
+    draw_text_centered(canvas, readout, text_half, font, text_size, text_color);
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────────
@@ -608,6 +669,47 @@ mod tests {
     fn canonical_icon_size_minimum_is_one() {
         let slot = Rect::new(0.0, 0.0, 1.0, 1.0);
         assert_eq!(canonical_icon_size(slot), 1.0);
+    }
+
+    #[test]
+    fn dim_color_scales_alpha_only() {
+        assert_eq!(dim_color([10, 20, 30, 200], 0.5), [10, 20, 30, 100]);
+    }
+
+    #[test]
+    fn dim_color_clamps_opacity() {
+        assert_eq!(dim_color([10, 20, 30, 200], 2.0), [10, 20, 30, 200]);
+        assert_eq!(dim_color([10, 20, 30, 200], -1.0), [10, 20, 30, 0]);
+    }
+
+    #[test]
+    fn verbose_split_inserts_gap_at_midline() {
+        let bounds = Rect::new(0.0, 0.0, 64.0, 32.0);
+        let (icon, text) = verbose_split(bounds, 4.0);
+        // Gap between the icon half's right edge and the text half's left edge.
+        assert_eq!(text.x - (icon.x + icon.width), 4.0);
+        // Halves shrink symmetrically.
+        assert_eq!(icon.width, 30.0);
+        assert_eq!(text.width, 30.0);
+        assert_eq!(icon.height, 32.0);
+        assert_eq!(text.height, 32.0);
+    }
+
+    #[test]
+    fn verbose_split_zero_gap_matches_plain_split() {
+        let bounds = Rect::new(10.0, 5.0, 64.0, 32.0);
+        let (icon, text) = verbose_split(bounds, 0.0);
+        let (pi, pt) = bounds.split_h(bounds.width / 2.0);
+        assert_eq!((icon.x, icon.width), (pi.x, pi.width));
+        assert_eq!((text.x, text.width), (pt.x, pt.width));
+    }
+
+    #[test]
+    fn verbose_split_clamps_oversized_gap() {
+        let bounds = Rect::new(0.0, 0.0, 8.0, 8.0);
+        let (icon, text) = verbose_split(bounds, 100.0);
+        assert!(icon.width >= 0.0);
+        assert!(text.width >= 0.0);
     }
 
     #[test]

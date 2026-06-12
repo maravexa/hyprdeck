@@ -18,7 +18,7 @@ hyprdeck-core    = { path = "crates/hyprdeck-core" }
 hyprdeck-modules = { path = "crates/hyprdeck-modules" }
 hyprdeck-themes  = { path = "crates/hyprdeck-themes" }
 
-smithay-client-toolkit = { version = "0.20", default-features = false }
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["xkbcommon"] }
 wayland-client         = "0.31"
 
 tiny-skia    = "0.12"

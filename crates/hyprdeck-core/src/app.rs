@@ -350,6 +350,8 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
 
     let module_gap = style_def.and_then(|s| s.module_gap).unwrap_or(0.0);
 
+    let verbose_text_padding = style_def.and_then(|s| s.verbose_text_padding);
+
     let opacity = config
         .theme_overrides
         .bar_opacity
@@ -390,6 +392,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
             ..ResolvedSeparator::default()
         },
         module_gap,
+        verbose_text_padding,
         module_styles,
     }
 }

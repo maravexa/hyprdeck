@@ -42,6 +42,9 @@ pub struct Panel {
     pub theme_ctx: ThemeContext,
     /// Active popup dropdown for this panel (at most one at a time).
     pub popup: PopupState,
+    /// Module currently under the cursor, tracked from `MouseMove` hit tests.
+    /// Keyboard events are routed here when no popup is open.
+    pub hovered_module: Option<String>,
     /// Whether this panel needs to be redrawn.
     pub dirty: bool,
     /// Whether the panel surface needs to be resized.
@@ -122,6 +125,9 @@ impl Panel {
             padding: style.padding,
             border_radius: style.border_radius,
             opacity: style.background_opacity,
+            verbose_text_padding: style
+                .verbose_text_padding
+                .unwrap_or(style.bar_height as f32 / 8.0),
             module_styles: style.module_styles.clone(),
         };
 
@@ -136,6 +142,7 @@ impl Panel {
             style,
             theme_ctx,
             popup: PopupState::new(),
+            hovered_module: None,
             dirty: true,
             needs_resize: false,
             surface_width,
@@ -249,6 +256,40 @@ impl Panel {
             return InputResult::None;
         };
 
+        // Keyboard events carry no position: route to the module owning the
+        // open popup if any, else the hovered module.
+        if let InputEvent::KeyPress { .. } = &event {
+            let target_id = self
+                .popup
+                .active_module
+                .clone()
+                .or_else(|| self.hovered_module.clone());
+            let Some(target_id) = target_id else {
+                tracing::trace!("KeyPress with no open popup or hovered module — dropped");
+                return InputResult::None;
+            };
+            let Some(bounds) = layout
+                .module_bounds
+                .iter()
+                .find(|(id, _)| *id == target_id)
+                .map(|(_, b)| *b)
+            else {
+                tracing::trace!("KeyPress target '{}' has no layout bounds", target_id);
+                return InputResult::None;
+            };
+            if let Some(module) = self.modules.iter_mut().find(|m| m.id() == target_id) {
+                match module.handle_event(&event, bounds) {
+                    EventResult::Action(action) => return InputResult::Action(action),
+                    EventResult::Handled => {
+                        self.dirty = true;
+                        return InputResult::None;
+                    }
+                    EventResult::Ignored => {}
+                }
+            }
+            return InputResult::None;
+        }
+
         let point = match &event {
             InputEvent::MousePress { x, y, .. }
             | InputEvent::MouseRelease { x, y, .. }
@@ -261,6 +302,9 @@ impl Panel {
             for (module_id, bounds) in &layout.module_bounds {
                 if bounds.contains(pt) {
                     hit_any = true;
+                    if matches!(&event, InputEvent::MouseMove { .. }) {
+                        self.hovered_module = Some(module_id.clone());
+                    }
                     // Stage 4: log every module hit.
                     if matches!(
                         &event,
@@ -326,6 +370,9 @@ impl Panel {
                     }
                 }
             }
+            if !hit_any && matches!(&event, InputEvent::MouseMove { .. }) {
+                self.hovered_module = None;
+            }
             // Stage 4: warn when a click lands outside every module's bounds.
             if !hit_any
                 && matches!(
@@ -371,6 +418,7 @@ impl Panel {
     /// Notify the panel that the cursor left its surface.
     pub fn on_cursor_leave(&mut self) {
         self.auto_hide.on_cursor_leave();
+        self.hovered_module = None;
         // Reset dock magnification
         if self.layout.update_cursor(None) {
             self.dirty = true;
@@ -595,6 +643,11 @@ pub struct ResolvedStyle {
     pub separator: ResolvedSeparator,
     /// Blank space between adjacent module slots in logical pixels.
     pub module_gap: f32,
+    /// Gap between the icon half and text half in verbose display mode, in
+    /// logical pixels.  Kept optional because the default depends on
+    /// `bar_height`, which `create_panel()` overrides after style resolution;
+    /// the final value is resolved into `ThemeContext` in `Panel::new`.
+    pub verbose_text_padding: Option<f32>,
     /// Per-module color overrides for this panel.
     pub module_styles: ResolvedModuleStyles,
 }
@@ -844,6 +897,7 @@ mod tests {
             background_opacity: 0.9,
             separator: ResolvedSeparator::default(),
             module_gap: 0.0,
+            verbose_text_padding: None,
             module_styles: ResolvedModuleStyles::default(),
         }
     }
@@ -876,6 +930,184 @@ mod tests {
     fn panel_starts_dirty() {
         let panel = test_panel();
         assert!(panel.dirty);
+    }
+
+    /// Shared log of keysyms received by a [`KeyRecorder`].
+    type KeyLog = std::sync::Arc<std::sync::Mutex<Vec<u32>>>;
+
+    /// Test module that records every KeyPress it receives.
+    struct KeyRecorder {
+        name: String,
+        size: Size,
+        received: KeyLog,
+    }
+
+    impl PanelModule for KeyRecorder {
+        fn id(&self) -> &str {
+            &self.name
+        }
+
+        fn desired_size(&self, _theme: &ThemeContext) -> Size {
+            self.size
+        }
+
+        fn update(&mut self, _ctx: &UpdateContext<'_>) -> bool {
+            false
+        }
+
+        fn render(
+            &self,
+            _canvas: &mut Pixmap,
+            _theme: &ThemeContext,
+            _bounds: crate::geometry::Rect,
+        ) {
+        }
+
+        fn handle_event(
+            &mut self,
+            event: &InputEvent,
+            _bounds: crate::geometry::Rect,
+        ) -> EventResult {
+            match event {
+                InputEvent::KeyPress { key, .. } => {
+                    self.received.lock().unwrap().push(*key);
+                    EventResult::Handled
+                }
+                _ => EventResult::Ignored,
+            }
+        }
+
+        fn config_schema(&self) -> ModuleConfigSchema {
+            ModuleConfigSchema {
+                module_id: self.name.clone(),
+                fields: vec![],
+            }
+        }
+    }
+
+    /// Panel with two key-recording modules "a" and "b"; returns the panel and
+    /// the per-module key logs.
+    fn key_test_panel() -> (Panel, KeyLog, KeyLog) {
+        let groups = ModuleGroups {
+            start: vec!["a".into(), "b".into()],
+            center: vec![],
+            end: vec![],
+        };
+        let mut panel = Panel::new(
+            Edge::Top,
+            test_style(),
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            groups,
+            1920,
+            32,
+        );
+        let keys_a = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let keys_b = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let modules: Vec<Box<dyn PanelModule>> = vec![
+            Box::new(KeyRecorder {
+                name: "a".into(),
+                size: Size::new(100.0, 32.0),
+                received: keys_a.clone(),
+            }),
+            Box::new(KeyRecorder {
+                name: "b".into(),
+                size: Size::new(80.0, 32.0),
+                received: keys_b.clone(),
+            }),
+        ];
+        panel.set_modules(modules);
+        // Force a layout so last_layout is populated.
+        let display = DisplayGeometry {
+            bounds: crate::geometry::Rect::new(0.0, 0.0, 1920.0, 1080.0),
+            usable_region: None,
+            edge_path: None,
+        };
+        panel.frame(&display);
+        (panel, keys_a, keys_b)
+    }
+
+    #[test]
+    fn key_press_routes_to_hovered_module() {
+        let (mut panel, keys_a, _keys_b) = key_test_panel();
+        // Hover module "a" (its slot starts at the left edge).
+        let _ = panel.handle_input(InputEvent::MouseMove { x: 10.0, y: 16.0 });
+        assert_eq!(panel.hovered_module.as_deref(), Some("a"));
+
+        let result = panel.handle_input(InputEvent::KeyPress {
+            key: 42,
+            modifiers: 0,
+        });
+        assert!(matches!(result, InputResult::None));
+        assert_eq!(*keys_a.lock().unwrap(), vec![42]);
+    }
+
+    #[test]
+    fn key_press_without_hover_or_popup_is_dropped() {
+        let (mut panel, keys_a, keys_b) = key_test_panel();
+        let result = panel.handle_input(InputEvent::KeyPress {
+            key: 42,
+            modifiers: 0,
+        });
+        assert!(matches!(result, InputResult::None));
+        assert!(keys_a.lock().unwrap().is_empty());
+        assert!(keys_b.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn key_press_prefers_open_popup_over_hover() {
+        let (mut panel, keys_a, keys_b) = key_test_panel();
+        let _ = panel.handle_input(InputEvent::MouseMove { x: 10.0, y: 16.0 });
+        panel.popup.active_module = Some("b".into());
+
+        let _ = panel.handle_input(InputEvent::KeyPress {
+            key: 7,
+            modifiers: 0,
+        });
+        assert!(keys_a.lock().unwrap().is_empty());
+        assert_eq!(*keys_b.lock().unwrap(), vec![7]);
+    }
+
+    #[test]
+    fn cursor_leave_clears_hovered_module() {
+        let (mut panel, _keys_a, _keys_b) = key_test_panel();
+        let _ = panel.handle_input(InputEvent::MouseMove { x: 10.0, y: 16.0 });
+        assert!(panel.hovered_module.is_some());
+        panel.on_cursor_leave();
+        assert!(panel.hovered_module.is_none());
+    }
+
+    #[test]
+    fn theme_ctx_uses_explicit_verbose_text_padding() {
+        let mut style = test_style();
+        style.verbose_text_padding = Some(3.0);
+        let panel = Panel::new(
+            Edge::Top,
+            style,
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            ModuleGroups::default(),
+            1920,
+            32,
+        );
+        assert_eq!(panel.theme_ctx.verbose_text_padding, 3.0);
+    }
+
+    #[test]
+    fn theme_ctx_defaults_verbose_text_padding_to_bar_height_eighth() {
+        let mut style = test_style();
+        style.verbose_text_padding = None;
+        style.bar_height = 40;
+        let panel = Panel::new(
+            Edge::Top,
+            style,
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            ModuleGroups::default(),
+            1920,
+            40,
+        );
+        assert_eq!(panel.theme_ctx.verbose_text_padding, 5.0);
     }
 
     #[test]

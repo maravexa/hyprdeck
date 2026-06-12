@@ -5,11 +5,12 @@ use std::time::Duration;
 use clap::Parser;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
-    delegate_seat, delegate_shm,
+    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
+    delegate_registry, delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState as SctkOutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
     seat::pointer::{
         BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, PointerEvent, PointerEventKind, PointerHandler,
     },
@@ -17,7 +18,8 @@ use smithay_client_toolkit::{
     shell::{
         WaylandSurface,
         wlr_layer::{
-            Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
         },
     },
     shm::{Shm, ShmHandler, slot::SlotPool},
@@ -26,12 +28,13 @@ use tracing::{debug, error, info, trace, warn};
 use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_output, wl_pointer, wl_seat, wl_surface},
+    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
 };
 
 use hyprdeck_core::ipc::HyprIpc;
 use hyprdeck_core::{
     App, Edge, InputEvent, InputResult, MouseButton, PopupEventResult, Rect, dispatch_action,
+    keymod,
 };
 
 // ── Application state ─────────────────────────────────────────────────────────
@@ -57,17 +60,46 @@ struct AppState {
     /// The active Wayland pointer object.  `None` until a seat with pointer
     /// capability is seen.
     pointer: Option<wl_pointer::WlPointer>,
+    /// The active Wayland keyboard object.  `None` until a seat with keyboard
+    /// capability is seen.
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// Surface that currently holds keyboard focus (a panel or popup surface).
+    /// `None` while no HyprDeck surface is focused.
+    keyboard_focus_surface: Option<wl_surface::WlSurface>,
+    /// Current modifier state as [`keymod`] bitflags, updated from
+    /// `update_modifiers` and attached to every dispatched key press.
+    modifiers: u32,
     /// Path to the Hyprland command socket, used when dispatching actions from popup events.
     hypr_socket: std::path::PathBuf,
+}
+
+/// Pack SCTK keyboard modifiers into [`keymod`] bitflags.
+///
+/// Lock states (caps/num lock) are deliberately not represented.
+fn pack_modifiers(m: &Modifiers) -> u32 {
+    let mut bits = 0;
+    if m.shift {
+        bits |= keymod::SHIFT;
+    }
+    if m.ctrl {
+        bits |= keymod::CTRL;
+    }
+    if m.alt {
+        bits |= keymod::ALT;
+    }
+    if m.logo {
+        bits |= keymod::LOGO;
+    }
+    bits
 }
 
 impl AppState {
     /// Create a Wayland `Overlay`-layer surface for a panel's popup.
     ///
-    /// Called after [`Panel::handle_input`] returns [`InputResult::OpenPopup`].
+    /// Called after `Panel::handle_input` returns [`InputResult::OpenPopup`].
     /// Reads the desired size from `panel.popup.content`, creates the surface,
     /// positions it adjacent to the panel edge, performs the initial empty commit
-    /// to trigger a `configure`, and calls [`Panel::attach_popup_surface`] to hand
+    /// to trigger a `configure`, and calls `Panel::attach_popup_surface` to hand
     /// over ownership.
     ///
     fn create_popup_surface_for_panel(
@@ -125,6 +157,9 @@ impl AppState {
         // placing the popup too far from the bar.  With zone=-1 our margins are always
         // measured from the raw output edge, which is what we want.
         layer.set_exclusive_zone(-1);
+
+        // OnDemand keyboard focus so popups can take key input (e.g. Esc to close).
+        layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
 
         // Anchor and margin place the popup flush against the panel surface,
         // with the popup's cross-axis centre aligned on the triggering module.
@@ -253,7 +288,16 @@ impl AppState {
                 // The connection flush in the main loop will send the destroy.
                 debug!("Popup closed for panel {} on '{}'", panel_idx, output_name);
             }
-            InputResult::Action(_) | InputResult::None => {}
+            InputResult::Action(action) => {
+                info!("Module action: {:?}", action);
+                let hypr_socket = self.hypr_socket.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = dispatch_action(&action, &hypr_socket).await {
+                        warn!("Module action dispatch failed: {}", e);
+                    }
+                });
+            }
+            InputResult::None => {}
         }
     }
 
@@ -305,7 +349,7 @@ impl AppState {
     /// Dispatch an [`InputEvent`] to the active popup content of the specified panel.
     ///
     /// Constructs bounds from the popup's current pixel dimensions and forwards
-    /// the event via [`PopupState::handle_event`].  If the popup returns an
+    /// the event via `PopupState::handle_event`.  If the popup returns an
     /// [`PopupEventResult::Action`], the popup is closed and the action is
     /// dispatched in a background tokio task.
     fn dispatch_popup_event(&mut self, output_name: &str, panel_idx: usize, event: InputEvent) {
@@ -403,6 +447,10 @@ impl AppState {
             };
             layer.set_exclusive_zone(excl);
 
+            // OnDemand: the compositor grants keyboard focus when the user
+            // clicks the panel and returns it to normal windows on click-away.
+            layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+
             // CRITICAL: initial empty commit — tells the compositor the surface
             // is ready and triggers the configure event.
             layer.commit();
@@ -455,6 +503,17 @@ impl SeatHandler for AppState {
                 }
             }
         }
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            match self.seat_state.get_keyboard(qh, &seat, None) {
+                Ok(kbd) => {
+                    info!("SEAT Created keyboard {:?}", kbd.id());
+                    self.keyboard = Some(kbd);
+                }
+                Err(e) => {
+                    error!("SEAT Failed to create keyboard: {}", e);
+                }
+            }
+        }
     }
 
     fn remove_capability(
@@ -468,11 +527,123 @@ impl SeatHandler for AppState {
         if capability == Capability::Pointer {
             self.pointer = None;
         }
+        if capability == Capability::Keyboard {
+            self.keyboard = None;
+            self.keyboard_focus_surface = None;
+            self.modifiers = 0;
+        }
     }
 
     fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
         info!("SEAT Seat removed: {:?}", seat.id());
         self.pointer = None;
+        self.keyboard = None;
+        self.keyboard_focus_surface = None;
+        self.modifiers = 0;
+    }
+}
+
+impl KeyboardHandler for AppState {
+    fn enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        surface: &wl_surface::WlSurface,
+        _serial: u32,
+        _raw: &[u32],
+        _keysyms: &[Keysym],
+    ) {
+        debug!("KEYBOARD Enter surface {:?}", surface.id());
+        self.keyboard_focus_surface = Some(surface.clone());
+    }
+
+    fn leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        surface: &wl_surface::WlSurface,
+        _serial: u32,
+    ) {
+        debug!("KEYBOARD Leave surface {:?}", surface.id());
+        self.keyboard_focus_surface = None;
+    }
+
+    fn press_key(
+        &mut self,
+        _conn: &Connection,
+        qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        debug!("KEYBOARD Press keysym {:?}", event.keysym);
+        let Some(surface) = self.keyboard_focus_surface.clone() else {
+            return;
+        };
+        let input = InputEvent::KeyPress {
+            key: event.keysym.raw(),
+            modifiers: self.modifiers,
+        };
+
+        if let Some((output_name, panel_idx)) = self.find_popup_owner(&surface) {
+            // Esc closes the focused popup; everything else goes to its content.
+            if event.keysym == Keysym::Escape {
+                if let Some(panel) = self
+                    .app
+                    .outputs
+                    .get_mut(&output_name)
+                    .and_then(|o| o.panels.get_mut(panel_idx))
+                {
+                    panel.popup.close();
+                }
+                return;
+            }
+            self.dispatch_popup_event(&output_name, panel_idx, input);
+        } else if let Some((output_name, panel_idx)) = self.find_panel_for_surface(&surface) {
+            let result = {
+                let output = self.app.outputs.get_mut(&output_name).unwrap();
+                output.panels[panel_idx].handle_input(input)
+            };
+            self.handle_input_result(result, &output_name, panel_idx, qh);
+        }
+    }
+
+    fn release_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+        // Key releases are not delivered to modules (no KeyRelease variant).
+    }
+
+    fn repeat_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+        // Key repeat is not requested (plain get_keyboard, no repeat source).
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        modifiers: Modifiers,
+        _raw_modifiers: RawModifiers,
+        _layout: u32,
+    ) {
+        self.modifiers = pack_modifiers(&modifiers);
+        trace!("KEYBOARD Modifiers {:#06b}", self.modifiers);
     }
 }
 
@@ -939,6 +1110,7 @@ delegate_layer!(AppState);
 delegate_shm!(AppState);
 delegate_seat!(AppState);
 delegate_pointer!(AppState);
+delegate_keyboard!(AppState);
 delegate_registry!(AppState);
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -1028,6 +1200,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         seat_state,
         wl_outputs: HashMap::new(),
         pointer: None,
+        keyboard: None,
+        keyboard_focus_surface: None,
+        modifiers: 0,
         hypr_socket,
     };
 
@@ -1209,4 +1384,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("HyprDeck shutting down");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn modifiers(shift: bool, ctrl: bool, alt: bool, logo: bool) -> Modifiers {
+        Modifiers {
+            shift,
+            ctrl,
+            alt,
+            logo,
+            ..Modifiers::default()
+        }
+    }
+
+    #[test]
+    fn pack_modifiers_maps_each_flag() {
+        assert_eq!(
+            pack_modifiers(&modifiers(true, false, false, false)),
+            keymod::SHIFT
+        );
+        assert_eq!(
+            pack_modifiers(&modifiers(false, true, false, false)),
+            keymod::CTRL
+        );
+        assert_eq!(
+            pack_modifiers(&modifiers(false, false, true, false)),
+            keymod::ALT
+        );
+        assert_eq!(
+            pack_modifiers(&modifiers(false, false, false, true)),
+            keymod::LOGO
+        );
+        assert_eq!(pack_modifiers(&modifiers(false, false, false, false)), 0);
+        assert_eq!(
+            pack_modifiers(&modifiers(true, true, true, true)),
+            keymod::SHIFT | keymod::CTRL | keymod::ALT | keymod::LOGO
+        );
+    }
+
+    #[test]
+    fn pack_modifiers_ignores_lock_states() {
+        let m = Modifiers {
+            caps_lock: true,
+            num_lock: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(pack_modifiers(&m), 0);
+    }
 }

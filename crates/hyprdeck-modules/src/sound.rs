@@ -221,35 +221,27 @@ impl PanelModule for SoundModule {
                 );
             }
             DisplayMode::Verbose => {
-                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
-                let icon_size = render_utils::canonical_icon_size(icon_half);
-                let icon_rect = render_utils::centered_icon_rect(icon_half, icon_size);
-                render_utils::draw_text_centered(
-                    canvas,
-                    icon,
-                    icon_rect,
-                    &theme.fonts.family,
-                    icon_size,
-                    theme.colors.foreground,
-                );
-                let font = theme
-                    .fonts
-                    .bold_family
-                    .as_deref()
-                    .unwrap_or(&theme.fonts.family);
-                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
                 let vol_text = if self.state.backend_name.is_empty() {
                     "--".to_owned()
                 } else {
                     format!("{}%", self.state.volume_percent.clamp(0, 100))
                 };
-                render_utils::draw_text_centered(
+                render_utils::draw_verbose(
                     canvas,
+                    bounds,
+                    theme,
                     &vol_text,
-                    text_half,
-                    font,
-                    text_size,
                     theme.colors.foreground,
+                    |canvas, icon_rect| {
+                        render_utils::draw_text_centered(
+                            canvas,
+                            icon,
+                            icon_rect,
+                            &theme.fonts.family,
+                            icon_rect.height,
+                            theme.colors.foreground,
+                        );
+                    },
                 );
             }
         }
@@ -422,7 +414,7 @@ impl PopupContent for SoundPopup {
 
         // ── Sink name (smaller, dimmed) ──
         if !self.state.sink_name.is_empty() {
-            let sink_color = dim_color(theme.colors.foreground, 0.6);
+            let sink_color = render_utils::dim_color(theme.colors.foreground, 0.6);
             let sink_rect = Rect::new(bounds.x, bounds.y + 24.0, bounds.width, 18.0);
             render_utils::draw_text_centered(
                 canvas,
@@ -438,7 +430,7 @@ impl PopupContent for SoundPopup {
         let slider_y = bounds.y + 50.0;
         let track_rect = Rect::new(bounds.x, slider_y + 8.0, bounds.width, 8.0);
         // Track background
-        let track_color = dim_color(theme.colors.foreground, 0.2);
+        let track_color = render_utils::dim_color(theme.colors.foreground, 0.2);
         render_utils::fill_rounded_rect(canvas, track_rect, track_color, 4.0);
 
         // Fill (clamped to track width)
@@ -552,11 +544,6 @@ impl SoundPopup {
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
-
-fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
-    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
-    [color[0], color[1], color[2], a]
-}
 
 // ── Backend detection ─────────────────────────────────────────────────────────
 

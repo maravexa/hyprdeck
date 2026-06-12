@@ -90,9 +90,9 @@ Edit `PKGBUILD`:
 3. Update `sha256sums` — download the crate tarball and hash it:
 
 ```sh
-curl -L "https://crates.io/api/v1/crates/hyprsaver/0.X.Y/download" \
-     -o hyprsaver-0.X.Y.crate
-sha256sum hyprsaver-0.X.Y.crate
+curl -L "https://crates.io/api/v1/crates/hyprdeck/0.X.Y/download" \
+     -o hyprdeck-0.X.Y.crate
+sha256sum hyprdeck-0.X.Y.crate
 ```
 
 Test the PKGBUILD locally:
@@ -104,7 +104,7 @@ makepkg -si
 Push the updated PKGBUILD to the AUR:
 
 ```sh
-# In your AUR clone of hyprsaver:
+# In your AUR clone of hyprdeck:
 cp /path/to/repo/PKGBUILD .
 makepkg --printsrcinfo > .SRCINFO
 git add PKGBUILD .SRCINFO

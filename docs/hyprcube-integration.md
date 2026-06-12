@@ -51,17 +51,21 @@ auto-generate the settings UI without any compile-time knowledge of the modules.
 
 ```rust
 use hyprdeck_core::PanelModule;
+use hyprdeck_modules::{builtin_module_ids, create_module};
 
 // Iterate every registered module and collect its schema:
-for module in hyprdeck_modules::all_modules() {
+for id in builtin_module_ids() {
+    let module = create_module(id, toml::Value::Table(Default::default()))
+        .expect("builtin id is always constructible");
     let schema = module.config_schema();
     // schema.fields: Vec<ConfigField>
     // ConfigField { key, label, description, field_type }
 }
 ```
 
-Field types (`ConfigFieldType`) cover: `String`, `Integer { min, max }`,
-`Float { min, max }`, `Boolean`, and `Enum { variants }`.
+Field types (`ConfigFieldType`) cover: `Text`, `Integer { min, max }`,
+`Float { min, max }`, `Boolean`, `Choice { options }`,
+`LabeledChoice { options, labels }`, and `Color`.
 
 ---
 

@@ -4,8 +4,12 @@
 //! The phase is re-computed at most once per calendar day; intraday updates
 //! are skipped.
 //!
-//! For 1.0, the phase is rendered as a Unicode moon-phase emoji (🌑 … 🌕 …).
-//! A Canvas-drawn crescent implementation is noted as a future enhancement.
+//! By default the phase is rendered as a canvas-drawn disc with a terminator
+//! curve (`render_utils::draw_moon_phase`).  The `render_mode` config key
+//! selects alternative representations: `emoji` (Unicode moon-phase emoji,
+//! 🌑 … 🌕) or `ascii` (scalable Unicode geometric symbols).  `icons`
+//! (pre-rendered theme icon sets) is reserved and currently falls back to
+//! canvas.
 
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -147,16 +151,23 @@ use crate::render_utils;
 
 /// How the moon phase icon is rendered.
 ///
-/// Only `Canvas` is implemented for 1.0; the other variants exist as
-/// forward-compatibility hooks for future theme-driven icon sets.
-#[derive(Debug, Default, Deserialize)]
+/// `Icons` is reserved for future theme-driven icon sets (themes have no
+/// asset-path schema yet); selecting it logs a warning at module creation
+/// and renders as `Canvas`.
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LunarRenderMode {
+    /// tiny-skia drawn disc with terminator curve (default, always works).
     #[default]
-    Canvas, // tiny-skia drawn (default, always works)
-    Icons, // pre-rendered PNG set from theme (future)
-    Emoji, // Unicode emoji fallback (future)
-    Ascii, // ASCII art (future)
+    Canvas,
+    /// Pre-rendered icon set from the theme (reserved; falls back to Canvas).
+    Icons,
+    /// Unicode moon-phase emoji (🌑 … 🌕).  Requires a color-emoji font for
+    /// color output; renders the font's monochrome fallback otherwise.
+    Emoji,
+    /// Unicode geometric symbols (● ◐ ○ …) drawn by the regular text font,
+    /// scalable to any size.
+    Ascii,
 }
 
 /// Configuration for the lunar phase display module.
@@ -207,12 +218,57 @@ pub struct LunarModule {
 
 impl LunarModule {
     pub fn new(config: LunarConfig) -> Self {
+        if config.render_mode == LunarRenderMode::Icons {
+            tracing::warn!(
+                "lunar: render_mode = \"icons\" is not yet implemented; falling back to canvas"
+            );
+        }
         LunarModule {
             config,
             cached_phase: 0.0,
             cached_name: String::new(),
             cached_illumination_pct: 0,
             last_date: None,
+        }
+    }
+
+    /// Draw the moon-phase icon into `icon_rect` according to the configured
+    /// render mode.
+    fn draw_phase_icon(&self, canvas: &mut Pixmap, theme: &ThemeContext, icon_rect: Rect) {
+        match self.config.render_mode {
+            // `Icons` falls back to canvas until themes can ship icon sets;
+            // the fallback is announced once in `LunarModule::new`.
+            LunarRenderMode::Canvas | LunarRenderMode::Icons => {
+                let lit_color = theme.colors.foreground;
+                let dark_color = render_utils::dim_color(theme.colors.background, 0.3);
+                render_utils::draw_moon_phase(
+                    canvas,
+                    icon_rect,
+                    self.cached_phase,
+                    lit_color,
+                    dark_color,
+                );
+            }
+            LunarRenderMode::Emoji => {
+                render_utils::draw_text_centered(
+                    canvas,
+                    moon_emoji(self.cached_phase),
+                    icon_rect,
+                    &theme.fonts.family,
+                    icon_rect.height * 0.9,
+                    theme.colors.foreground,
+                );
+            }
+            LunarRenderMode::Ascii => {
+                render_utils::draw_text_centered(
+                    canvas,
+                    moon_phase_symbol(self.cached_phase),
+                    icon_rect,
+                    &theme.fonts.family,
+                    icon_rect.height,
+                    theme.colors.foreground,
+                );
+            }
         }
     }
 
@@ -299,20 +355,11 @@ impl PanelModule for LunarModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let lit_color = theme.colors.foreground;
-        let dark_color = render_utils::dim_color(theme.colors.background, 0.3);
-
         match self.config.display {
             DisplayMode::Icon => {
                 let icon_size = render_utils::canonical_icon_size(bounds);
                 let icon_bounds = render_utils::centered_icon_rect(bounds, icon_size);
-                render_utils::draw_moon_phase(
-                    canvas,
-                    icon_bounds,
-                    self.cached_phase,
-                    lit_color,
-                    dark_color,
-                );
+                self.draw_phase_icon(canvas, theme, icon_bounds);
                 if self.config.show_label && !self.cached_name.is_empty() {
                     let label_x = icon_bounds.x + icon_bounds.width + 4.0;
                     let label_rect = Rect::new(
@@ -347,13 +394,7 @@ impl PanelModule for LunarModule {
                     &readout,
                     theme.colors.foreground,
                     |canvas, icon_rect| {
-                        render_utils::draw_moon_phase(
-                            canvas,
-                            icon_rect,
-                            self.cached_phase,
-                            lit_color,
-                            dark_color,
-                        );
+                        self.draw_phase_icon(canvas, theme, icon_rect);
                     },
                 );
             }
@@ -421,7 +462,7 @@ impl PanelModule for LunarModule {
                 ConfigField {
                     key: "render_mode".to_owned(),
                     label: "Render mode".to_owned(),
-                    description: "How the moon icon is drawn (canvas, icons, emoji, ascii).".to_owned(),
+                    description: "How the moon icon is drawn: canvas (vector disc, default), emoji (color-emoji font required for color output), ascii (Unicode geometric symbols), icons (reserved; falls back to canvas).".to_owned(),
                     field_type: ConfigFieldType::Choice {
                         options: vec!["canvas".to_owned(), "icons".to_owned(), "emoji".to_owned(), "ascii".to_owned()],
                         default: "canvas".to_owned(),
@@ -576,5 +617,91 @@ mod tests {
     fn resolve_unknown_body_falls_back_to_luna() {
         let body = LunarModule::resolve_body("unknown_planet");
         assert_eq!(body, Body::Luna);
+    }
+
+    #[test]
+    fn moon_phase_symbol_new_is_dark_full_is_bright() {
+        assert_eq!(moon_phase_symbol(0.0), "●");
+        assert_eq!(moon_phase_symbol(0.5), "○");
+    }
+
+    #[test]
+    fn moon_phase_symbol_covers_all_8_phases() {
+        let phases = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
+        for p in phases {
+            assert!(!moon_phase_symbol(p).is_empty(), "empty symbol for {p}");
+        }
+    }
+
+    #[test]
+    fn render_mode_deserializes_all_variants() {
+        for (toml, expected) in [
+            ("render_mode = \"canvas\"", LunarRenderMode::Canvas),
+            ("render_mode = \"icons\"", LunarRenderMode::Icons),
+            ("render_mode = \"emoji\"", LunarRenderMode::Emoji),
+            ("render_mode = \"ascii\"", LunarRenderMode::Ascii),
+        ] {
+            let config: LunarConfig = toml::from_str(toml).unwrap();
+            assert_eq!(config.render_mode, expected, "for input {toml:?}");
+        }
+    }
+
+    fn test_theme() -> ThemeContext {
+        use hyprdeck_core::{ColorPalette, FontConfig, Padding, ResolvedModuleStyles};
+        ThemeContext {
+            colors: ColorPalette {
+                background: [30, 30, 30, 230],
+                foreground: [255, 255, 255, 255],
+                accent: [80, 160, 255, 255],
+                urgent: [255, 80, 80, 255],
+                separator: [128, 128, 128, 128],
+            },
+            fonts: FontConfig {
+                family: "sans-serif".into(),
+                size: 13.0,
+                bold_family: None,
+                mono_family: None,
+            },
+            padding: Padding::default(),
+            border_radius: 0.0,
+            opacity: 1.0,
+            verbose_text_padding: 4.0,
+            module_styles: ResolvedModuleStyles::default(),
+        }
+    }
+
+    /// Every render mode must draw without panicking in both display modes.
+    /// Pixel assertions are limited to Canvas (and the Icons fallback): the
+    /// Emoji/Ascii modes depend on fonts installed on the test machine.
+    #[test]
+    fn all_render_modes_render_without_panic() {
+        let theme = test_theme();
+        let state = hyprdeck_core::HyprState::default();
+        let t = chrono::Local
+            .with_ymd_and_hms(2024, 1, 20, 12, 0, 0)
+            .unwrap();
+        let ctx = UpdateContext {
+            now: t,
+            hypr_state: &state,
+            output_name: "",
+        };
+
+        for mode_toml in ["canvas", "icons", "emoji", "ascii"] {
+            for display_toml in ["icon", "verbose"] {
+                let config: LunarConfig = toml::from_str(&format!(
+                    "render_mode = \"{mode_toml}\"\ndisplay = \"{display_toml}\""
+                ))
+                .unwrap();
+                let mut m = LunarModule::new(config);
+                m.update(&ctx);
+                let mut pm = Pixmap::new(64, 32).unwrap();
+                m.render(&mut pm, &theme, Rect::new(0.0, 0.0, 64.0, 32.0));
+
+                if mode_toml == "canvas" || mode_toml == "icons" {
+                    let painted = pm.data().chunks_exact(4).any(|px| px[3] > 0);
+                    assert!(painted, "canvas-backed mode {mode_toml} painted nothing");
+                }
+            }
+        }
     }
 }

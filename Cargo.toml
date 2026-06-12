@@ -38,5 +38,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono    = { version = "0.4", features = ["serde"] }
 reqwest   = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 nix       = { version = "0.31", features = ["net", "socket"] }
-freedesktop-icons = "0.2"
+freedesktop-icons = "0.4"
 include_dir       = "0.7"

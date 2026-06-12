@@ -105,7 +105,7 @@ impl PanelModule for PowerModule {
         let icon_size = (bounds.height * 0.8).floor();
 
         if self.hovered {
-            let bg = dim_color(theme.colors.foreground, 0.12);
+            let bg = render_utils::dim_color(theme.colors.foreground, 0.12);
             render_utils::fill_rounded_rect(canvas, bounds, bg, theme.border_radius);
         }
 
@@ -198,11 +198,6 @@ impl PanelModule for PowerModule {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
-    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
-    [color[0], color[1], color[2], a]
-}
 
 // ── Power popup ───────────────────────────────────────────────────────────────
 
@@ -416,6 +411,7 @@ mod tests {
             padding: Padding::default(),
             border_radius: 4.0,
             opacity: 1.0,
+            verbose_text_padding: 4.0,
             module_styles: ResolvedModuleStyles::default(),
         };
         let popup = PowerPopup::new(&PowerCommands::default());

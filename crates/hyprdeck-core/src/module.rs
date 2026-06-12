@@ -47,6 +47,10 @@ pub struct ThemeContext {
     pub padding: Padding,
     pub border_radius: f32,
     pub opacity: f32,
+    /// Gap between the icon half and text half in verbose display mode, in
+    /// logical pixels.  Resolved from the theme's `verbose_text_padding` key,
+    /// defaulting to `bar_height / 8` when the key is absent.
+    pub verbose_text_padding: f32,
     /// Per-module color overrides resolved from the panel's `module_styles` section.
     pub module_styles: ResolvedModuleStyles,
 }

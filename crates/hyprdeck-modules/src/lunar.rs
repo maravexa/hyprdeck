@@ -300,7 +300,7 @@ impl PanelModule for LunarModule {
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         let lit_color = theme.colors.foreground;
-        let dark_color = dim_color(theme.colors.background, 0.3);
+        let dark_color = render_utils::dim_color(theme.colors.background, 0.3);
 
         match self.config.display {
             DisplayMode::Icon => {
@@ -339,30 +339,22 @@ impl PanelModule for LunarModule {
                 }
             }
             DisplayMode::Verbose => {
-                let (icon_half, text_half) = bounds.split_h(bounds.width / 2.0);
-                let icon_size = render_utils::canonical_icon_size(icon_half);
-                let icon_bounds = render_utils::centered_icon_rect(icon_half, icon_size);
-                render_utils::draw_moon_phase(
-                    canvas,
-                    icon_bounds,
-                    self.cached_phase,
-                    lit_color,
-                    dark_color,
-                );
                 let readout = format!("{}%", self.cached_illumination_pct);
-                let bold = theme
-                    .fonts
-                    .bold_family
-                    .as_deref()
-                    .unwrap_or(&theme.fonts.family);
-                let text_size = render_utils::effective_font_size(bounds.height, theme.fonts.size);
-                render_utils::draw_text_centered(
+                render_utils::draw_verbose(
                     canvas,
+                    bounds,
+                    theme,
                     &readout,
-                    text_half,
-                    bold,
-                    text_size,
                     theme.colors.foreground,
+                    |canvas, icon_rect| {
+                        render_utils::draw_moon_phase(
+                            canvas,
+                            icon_rect,
+                            self.cached_phase,
+                            lit_color,
+                            dark_color,
+                        );
+                    },
                 );
             }
         }
@@ -464,7 +456,7 @@ impl PopupContent for LunarPopup {
             moon_size,
         );
         let lit_color = theme.colors.foreground;
-        let dark_color = dim_color(theme.colors.foreground, 0.15);
+        let dark_color = render_utils::dim_color(theme.colors.foreground, 0.15);
         render_utils::draw_moon_phase(
             canvas,
             moon_bounds,
@@ -496,12 +488,12 @@ impl PopupContent for LunarPopup {
         );
 
         // Phase name (dimmed)
-        let dim = dim_color(theme.colors.foreground, 0.8);
+        let dim = render_utils::dim_color(theme.colors.foreground, 0.8);
         let phase_rect = Rect::new(bounds.x, bounds.y + 112.0, bounds.width, 22.0);
         render_utils::draw_text_centered(canvas, &self.phase_name, phase_rect, font, 14.0, dim);
 
         // Illumination percentage (more dimmed)
-        let dim2 = dim_color(theme.colors.foreground, 0.6);
+        let dim2 = render_utils::dim_color(theme.colors.foreground, 0.6);
         let illum_text = format!("{:.1}% illuminated", self.illumination_fraction * 100.0);
         let illum_rect = Rect::new(bounds.x, bounds.y + 134.0, bounds.width, 22.0);
         render_utils::draw_text_centered(canvas, &illum_text, illum_rect, font, 13.0, dim2);
@@ -514,11 +506,6 @@ impl PopupContent for LunarPopup {
     fn update(&mut self) -> bool {
         false
     }
-}
-
-fn dim_color(color: [u8; 4], opacity: f32) -> [u8; 4] {
-    let a = (color[3] as f32 * opacity.clamp(0.0, 1.0)) as u8;
-    [color[0], color[1], color[2], a]
 }
 
 #[cfg(test)]

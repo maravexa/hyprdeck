@@ -256,6 +256,7 @@ mod tests {
             },
             border_radius: 4.0,
             opacity: 1.0,
+            verbose_text_padding: 4.0,
             module_styles: ResolvedModuleStyles::default(),
         }
     }

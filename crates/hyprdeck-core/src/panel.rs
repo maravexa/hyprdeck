@@ -122,6 +122,9 @@ impl Panel {
             padding: style.padding,
             border_radius: style.border_radius,
             opacity: style.background_opacity,
+            verbose_text_padding: style
+                .verbose_text_padding
+                .unwrap_or(style.bar_height as f32 / 8.0),
             module_styles: style.module_styles.clone(),
         };
 
@@ -595,6 +598,11 @@ pub struct ResolvedStyle {
     pub separator: ResolvedSeparator,
     /// Blank space between adjacent module slots in logical pixels.
     pub module_gap: f32,
+    /// Gap between the icon half and text half in verbose display mode, in
+    /// logical pixels.  Kept optional because the default depends on
+    /// `bar_height`, which `create_panel()` overrides after style resolution;
+    /// the final value is resolved into `ThemeContext` in `Panel::new`.
+    pub verbose_text_padding: Option<f32>,
     /// Per-module color overrides for this panel.
     pub module_styles: ResolvedModuleStyles,
 }
@@ -844,6 +852,7 @@ mod tests {
             background_opacity: 0.9,
             separator: ResolvedSeparator::default(),
             module_gap: 0.0,
+            verbose_text_padding: None,
             module_styles: ResolvedModuleStyles::default(),
         }
     }
@@ -876,6 +885,39 @@ mod tests {
     fn panel_starts_dirty() {
         let panel = test_panel();
         assert!(panel.dirty);
+    }
+
+    #[test]
+    fn theme_ctx_uses_explicit_verbose_text_padding() {
+        let mut style = test_style();
+        style.verbose_text_padding = Some(3.0);
+        let panel = Panel::new(
+            Edge::Top,
+            style,
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            ModuleGroups::default(),
+            1920,
+            32,
+        );
+        assert_eq!(panel.theme_ctx.verbose_text_padding, 3.0);
+    }
+
+    #[test]
+    fn theme_ctx_defaults_verbose_text_padding_to_bar_height_eighth() {
+        let mut style = test_style();
+        style.verbose_text_padding = None;
+        style.bar_height = 40;
+        let panel = Panel::new(
+            Edge::Top,
+            style,
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            ModuleGroups::default(),
+            1920,
+            40,
+        );
+        assert_eq!(panel.theme_ctx.verbose_text_padding, 5.0);
     }
 
     #[test]

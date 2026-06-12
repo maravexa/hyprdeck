@@ -22,7 +22,7 @@ smithay-client-toolkit = { version = "0.20", default-features = false, features 
 wayland-client         = "0.31"
 
 tiny-skia    = "0.12"
-cosmic-text  = "0.12"
+cosmic-text  = "0.19"
 image        = { version = "0.25", default-features = false, features = ["png", "ico"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "signal"] }

@@ -60,11 +60,41 @@ pub struct ThemeContext {
 /// An input event dispatched to the module under the cursor.
 #[derive(Debug, Clone)]
 pub enum InputEvent {
-    MousePress { x: f32, y: f32, button: MouseButton },
-    MouseRelease { x: f32, y: f32, button: MouseButton },
-    MouseMove { x: f32, y: f32 },
-    Scroll { dx: f32, dy: f32 },
-    KeyPress { key: u32, modifiers: u32 },
+    MousePress {
+        x: f32,
+        y: f32,
+        button: MouseButton,
+    },
+    MouseRelease {
+        x: f32,
+        y: f32,
+        button: MouseButton,
+    },
+    MouseMove {
+        x: f32,
+        y: f32,
+    },
+    Scroll {
+        dx: f32,
+        dy: f32,
+    },
+    /// A key press while the panel (or its popup) has keyboard focus.
+    ///
+    /// `key` is the xkb keysym value; `modifiers` is a bitmask of [`keymod`]
+    /// flags.  Delivered to the module owning the open popup if any, else the
+    /// hovered module.  Key release and key repeat are not delivered.
+    KeyPress {
+        key: u32,
+        modifiers: u32,
+    },
+}
+
+/// Modifier bitflags for [`InputEvent::KeyPress`]'s `modifiers` field.
+pub mod keymod {
+    pub const SHIFT: u32 = 1 << 0;
+    pub const CTRL: u32 = 1 << 1;
+    pub const ALT: u32 = 1 << 2;
+    pub const LOGO: u32 = 1 << 3;
 }
 
 /// Pointer button identifier.

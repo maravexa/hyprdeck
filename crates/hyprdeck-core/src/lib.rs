@@ -33,7 +33,7 @@ pub use layout::{
 };
 pub use module::{
     ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
-    MouseButton, PanelModule, ThemeContext, UpdateContext,
+    MouseButton, PanelModule, ThemeContext, UpdateContext, keymod,
 };
 pub use output::OutputState;
 pub use panel::{

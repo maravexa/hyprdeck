@@ -41,10 +41,12 @@ Pick a shipped theme, set your accent colour, done.  Power users can copy a them
 | `calendar` | Month calendar pop-up, supports Gregorian and Discordian |
 | `clock` | Digital clock with configurable `strftime` format |
 | `favorites` | Pinned application launchers with running indicators |
-| `lunar` | Lunar phase icon (powered by `fn0rd`, shared with HyprSaver) |
+| `lunar` | Lunar phase icon (canvas-drawn, with emoji/ascii render modes) |
 | `menu_button` | Application menu / start button |
 | `network` | Wi-Fi / ethernet indicator with optional rate display |
+| `power` | Power / session menu (lock, logout, suspend, reboot, shutdown) |
 | `shell` | Display the stdout of any shell command on an interval |
+| `sound` | Volume level and mute state (PipeWire, PulseAudio, or ALSA) |
 | `weather` | Current temperature and condition via Open-Meteo |
 | `window_list` | Taskbar-style list of open windows |
 | `workspaces` | Hyprland workspace switcher with urgent highlighting |

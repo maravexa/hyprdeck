@@ -25,7 +25,8 @@ crates/
                       rendering abstraction
   hyprdeck-modules/   built-in modules implementing PanelModule trait
                       (calendar, weather, lunar, network, workspaces,
-                       menu, favorites, shell, clock, window_list)
+                       menu_button, favorites, shell, clock, window_list,
+                       sound, power)
   hyprdeck-themes/    theme loading, validation, embedded defaults via include_dir
   hyprdeck/           binary crate — main event loop, wires everything together
 ```
@@ -115,7 +116,8 @@ Minimum Rust version: **1.85** (Cargo edition 2024 support).
 1. Create `crates/hyprdeck-modules/src/<name>.rs`.
 2. Define a `<Name>Config` struct with `#[derive(Debug, Default, Deserialize)]`.
 3. Define a `<Name>Module` state struct.
-4. Implement `PanelModule` for `<Name>Module` — all six trait methods are required.
+4. Implement `PanelModule` for `<Name>Module` — six trait methods are required
+   (`has_popup` and `popup_content` have default implementations).
    Function bodies may be `todo!()` during scaffolding.
 5. Declare `pub mod <name>;` and `pub use <name>::<Name>Module;` in
    `hyprdeck-modules/src/lib.rs`.
@@ -148,7 +150,9 @@ Minimum Rust version: **1.85** (Cargo edition 2024 support).
 | `nix` | Low-level OS calls for network interface polling |
 | `freedesktop-icons` | XDG icon theme lookups for window/app icons |
 | `include_dir` | Embeds `themes/` directory at compile time |
-| `fn0rd` | Lunar phase calculations (sibling project, not yet on crates.io) |
+
+Lunar phase calculations are inlined in `hyprdeck-modules/src/lunar.rs`
+(synodic-period approximation, formerly the sibling `fn0rd` library).
 
 **No DBus at 1.0.**  System tray (StatusNotifierItem), audio (PipeWire), and
 Bluetooth are all post-1.0.  This avoids a heavyweight runtime dependency and
@@ -195,5 +199,5 @@ cargo test --workspace
 
 | Project | Status | Integration Point |
 |---------|--------|-------------------|
-| **HyprSaver** | In development | Shares theme colour palettes; shares `fn0rd` lunar lib |
+| **HyprSaver** | In development | Shares theme colour palettes |
 | **HyprCube** | Planned | Will call `config_schema()` on every module to auto-generate settings UI; will provide a theme picker reading `embedded_theme_names()` |

@@ -9,3 +9,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # The @ref on this action selects the Rust toolchain version under
+      # test; bumping it silently changes the MSRV gate (see the msrv job).
+      - dependency-name: "dtolnay/rust-toolchain"

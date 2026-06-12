@@ -96,10 +96,10 @@ fn pack_modifiers(m: &Modifiers) -> u32 {
 impl AppState {
     /// Create a Wayland `Overlay`-layer surface for a panel's popup.
     ///
-    /// Called after [`Panel::handle_input`] returns [`InputResult::OpenPopup`].
+    /// Called after `Panel::handle_input` returns [`InputResult::OpenPopup`].
     /// Reads the desired size from `panel.popup.content`, creates the surface,
     /// positions it adjacent to the panel edge, performs the initial empty commit
-    /// to trigger a `configure`, and calls [`Panel::attach_popup_surface`] to hand
+    /// to trigger a `configure`, and calls `Panel::attach_popup_surface` to hand
     /// over ownership.
     ///
     fn create_popup_surface_for_panel(
@@ -349,7 +349,7 @@ impl AppState {
     /// Dispatch an [`InputEvent`] to the active popup content of the specified panel.
     ///
     /// Constructs bounds from the popup's current pixel dimensions and forwards
-    /// the event via [`PopupState::handle_event`].  If the popup returns an
+    /// the event via `PopupState::handle_event`.  If the popup returns an
     /// [`PopupEventResult::Action`], the popup is closed and the action is
     /// dispatched in a background tokio task.
     fn dispatch_popup_event(&mut self, output_name: &str, panel_idx: usize, event: InputEvent) {

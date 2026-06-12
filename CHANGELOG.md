@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Panel module actions (workspace switch, favorites launch, menu button,
+  window-list focus) are now dispatched. Previously the binary produced the
+  action on click and then silently dropped it; only popup actions had a
+  working dispatch path.
+- The `verbose_text_padding` theme key is now honored: it controls the gap
+  between the icon half and readout half in verbose display mode, defaulting
+  to `bar_height / 8` when absent. It was previously parsed but ignored.
+- The MSRV CI job pins Rust 1.85.0 again (a Dependabot bump had silently moved
+  it to a newer toolchain); `dtolnay/rust-toolchain` is now excluded from
+  Dependabot action bumps.
 - Sound module icon now scales to theme icon size and centers correctly in its
   slot (was rendering at intrinsic size in the top-left corner).
 - Adjacent modules on the status bar now render with configurable horizontal
@@ -18,13 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keyboard input support. Panel and popup surfaces request on-demand keyboard
+  focus from the compositor; key presses are routed to the module owning the
+  open popup (Esc closes it) or to the hovered module, as
+  `InputEvent::KeyPress { key, modifiers }` with xkb keysyms and
+  `hyprdeck_core::keymod` modifier bitflags.
+- `lunar` render modes: `render_mode = "emoji"` (Unicode moon-phase emoji) and
+  `render_mode = "ascii"` (scalable Unicode geometric symbols) join the default
+  `"canvas"` drawing. `"icons"` remains reserved and falls back to canvas with
+  a warning.
+- `docs/audit-2026-06.md`: full repository audit (documentation drift,
+  redundancy, stale comments, half-wired features) with resolutions.
 - Icon-only / verbose display modes for `lunar`, `sound`, and `network` modules,
   configurable via `hyprdeck.toml`.
   - `display = "icon"` (default) — single icon square; preserves existing layout.
   - `display = "verbose"` — double-wide widget: icon in the left half, numeric
     readout in the right half.
     - **lunar** readout: integer illumination percentage (e.g. `87%`), derived from
-      the same `fn0rd` synodic-period calculation used by the popup.
+      the same built-in synodic-period calculation used by the popup.
     - **sound** readout: master volume percentage clamped to 0–100 (e.g. `75%`);
       shows `--` until the audio backend is detected.
     - **network** readout: `-45 dBm` for Wi-Fi, compact link speed for wired
@@ -36,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `hyprdeck_core::DisplayMode` enum is publicly exported for future use by
     third-party modules.
   - All five shipped themes extended with a `verbose_text_padding` style field
-    that documents (and in future wires) the gap between icon and readout halves.
+    controlling the gap between icon and readout halves.
   - Note: hot reload is not yet implemented; a panel restart is required to apply
     `display` mode changes.
 

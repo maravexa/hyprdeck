@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Updated transitive Wayland, TLS, QUIC, and concurrency dependencies to
+  releases covering the RustSec advisories known at release time.
 - Application entries resolve SVG icons and desktop-file class mappings, show
   icons in button mode, and use an initial tile when no icon is available.
 - Menu clicks execute even when no prior pointer-motion event established the

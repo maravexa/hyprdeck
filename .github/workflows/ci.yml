@@ -36,7 +36,7 @@ jobs:
     name: Check (fmt, clippy, check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
@@ -114,7 +114,7 @@ jobs:
     name: MSRV (1.85.0)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config

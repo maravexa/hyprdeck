@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The AUR recipe disables distro-level LTO to avoid unresolved `ring` symbols
+  when Rust is configured to link with LLVM's `lld`.
+
 ## [0.1.0] - 2026-09-02
 
 ### Fixed

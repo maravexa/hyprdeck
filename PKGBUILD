@@ -6,6 +6,9 @@ pkgdesc="A Wayland-native panel, taskbar, and dock for Hyprland"
 arch=('x86_64')
 url="https://github.com/maravexa/hyprdeck"
 license=('MIT')
+# GCC LTO objects from ring are not linkable by Rust toolchains configured
+# with LLVM's lld. Rust's release profile still performs its own optimization.
+options=('!lto')
 depends=(
     'fontconfig'
     'libxkbcommon'

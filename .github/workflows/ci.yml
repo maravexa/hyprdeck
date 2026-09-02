@@ -9,6 +9,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  markdown:
+    name: Documentation (Markdown)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@v23.0.0
+        with:
+          globs: |
+            **/*.md
+            #target
+
+      - name: Check local documentation links
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: >-
+            --offline
+            --include-fragments
+            --root-dir "${{ github.workspace }}"
+            './**/*.md'
+          fail: true
+
   check:
     name: Check (fmt, clippy, check)
     runs-on: ubuntu-latest

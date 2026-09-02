@@ -1,137 +1,60 @@
-# Contributing to hyprdeck
+# Contributing to HyprDeck
 
-## Getting Started
+Thanks for contributing. For changes larger than a small bug fix, open an
+issue first so the intended behaviour and scope can be discussed.
 
-Fork the repository, create a feature branch, and submit a pull request. For anything larger than a small bug fix, open an issue first to discuss the approach.
+## Development setup
 
-Before submitting:
-
-```sh
-cargo fmt
-cargo clippy -- -D warnings
-cargo test
-```
-
-## Release Checklist
-
-Follow these steps in order when cutting a new release:
-
-### 1. Bump the version
-
-Edit `Cargo.toml`:
-
-```toml
-[package]
-version = "0.X.Y"
-```
-
-Run `cargo build` once so `Cargo.lock` is updated, then commit both files:
+HyprDeck is a Rust workspace targeting Linux and Wayland. Install a Rust
+toolchain with the `rustfmt` and `clippy` components, plus the Wayland, XKB, and
+`pkg-config` development dependencies described in the
+[development guide](docs/development.md). The CI MSRV check uses Rust 1.85.0;
+use that version or newer when making a change.
 
 ```sh
-cargo build
-git add Cargo.toml Cargo.lock
-git commit -m "chore: bump version to 0.X.Y"
+git clone https://github.com/maravexa/hyprdeck
+cd hyprdeck
+cargo build --workspace
 ```
 
-### 2. Update CHANGELOG.md
+For a live run, use a Hyprland session and create the required
+`hyprdeck.toml` configuration first. See [development](docs/development.md)
+for the environment and smoke-test limitations.
 
-Add a section at the top:
+## Workflow
 
-```markdown
-## [0.X.Y] — YYYY-MM-DD
+1. Create a focused branch from the current main branch.
+2. Keep a change scoped to the relevant crate(s), tests, and documentation.
+3. Add or update tests when behaviour that can be tested without a compositor
+   changes.
+4. Run the quality gates below before opening a pull request.
+5. Explain the user-visible change, testing performed, and any Hyprland or
+   Wayland conditions reviewers need to reproduce it.
 
-### Added
-- ...
+The workspace consists of the `hyprdeck` binary and three libraries:
+`hyprdeck-core`, `hyprdeck-modules`, and `hyprdeck-themes`. Keep the core crate
+independent of the built-in module and theme crates; the binary supplies the
+module factory and depends on all three.
 
-### Changed
-- ...
+## Required checks
 
-### Fixed
-- ...
-```
-
-Commit:
+Run these commands from the repository root:
 
 ```sh
-git add CHANGELOG.md
-git commit -m "docs: update CHANGELOG for 0.X.Y"
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo check --workspace
+cargo test --workspace --all-targets
+cargo test --workspace --doc
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#target"
 ```
 
-### 3. Tag the release
-
-```sh
-git tag -s v0.X.Y -m "Release v0.X.Y"
-git push origin main --tags
-```
-
-The signed tag triggers the GitHub Actions release workflow, which builds
-Linux binaries (`.deb`, `.rpm`, `.tar.zst`) and attaches them to the GitHub
-Release.
-
-### 4. Publish to crates.io
-
-```sh
-# Dry-run first — catches missing files, bad metadata, etc.
-cargo publish --dry-run
-
-# If clean, publish for real
-cargo publish
-```
-
-> **Note**: `cargo publish` requires a crates.io API token. Set it with
-> `cargo login` or the `CARGO_REGISTRY_TOKEN` environment variable.
-
-### 5. Update the AUR package
-
-Edit `PKGBUILD`:
-
-1. Set `pkgver=0.X.Y`
-2. Reset `pkgrel=1`
-3. Update `sha256sums` — download the crate tarball and hash it:
-
-```sh
-curl -L "https://crates.io/api/v1/crates/hyprdeck/0.X.Y/download" \
-     -o hyprdeck-0.X.Y.crate
-sha256sum hyprdeck-0.X.Y.crate
-```
-
-Test the PKGBUILD locally:
-
-```sh
-makepkg -si
-```
-
-Push the updated PKGBUILD to the AUR:
-
-```sh
-# In your AUR clone of hyprdeck:
-cp /path/to/repo/PKGBUILD .
-makepkg --printsrcinfo > .SRCINFO
-git add PKGBUILD .SRCINFO
-git commit -m "Update to 0.X.Y"
-git push
-```
-
-### 6. Update the Nix flake lock (optional but recommended)
-
-```sh
-nix flake update
-git add flake.lock
-git commit -m "flake: update flake.lock for 0.X.Y"
-git push
-```
-
----
-
-## Dependency Policy
-
-- All dependencies must be from crates.io — no path or git dependencies in
-  published releases.
-- Keep the dependency count low. Prefer standard library or existing deps
-  before adding new ones.
-- Pin major versions in `Cargo.toml`; let semver handle minor/patch.
+Use `cargo fmt --all` to apply formatting after the check reports differences.
+The CI pipeline also builds the complete workspace in release mode and checks
+local documentation links with Lychee.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the
-MIT license (see [LICENSE](LICENSE)).
+By contributing, you agree that your contributions are licensed under the MIT
+license; see [LICENSE](LICENSE).

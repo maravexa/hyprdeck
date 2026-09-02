@@ -315,7 +315,7 @@ fn poll_all_active_interfaces() -> Vec<NetworkSnapshot> {
         .map(|name| poll_interface(&name))
         .collect();
     // WiFi first, then wired.
-    snapshots.sort_by(|a, b| b.is_wireless.cmp(&a.is_wireless));
+    snapshots.sort_by_key(|snapshot| std::cmp::Reverse(snapshot.is_wireless));
     snapshots
 }
 

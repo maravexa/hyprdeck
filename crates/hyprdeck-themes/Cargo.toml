@@ -2,7 +2,12 @@
 name    = "hyprdeck-themes"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Embedded themes and theme discovery for HyprDeck"
 
 [dependencies]
 hyprdeck-core = { workspace = true }

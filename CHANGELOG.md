@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-02
+
 ### Fixed
 
+- Application entries resolve SVG icons and desktop-file class mappings, show
+  icons in button mode, and use an initial tile when no icon is available.
+- Menu clicks execute even when no prior pointer-motion event established the
+  module's hover state.
+
+- Starting HyprDeck again refreshes the existing process through a private
+  runtime socket instead of creating another set of exclusive-zone panels.
+- Popup surfaces remain open across brief pointer-leave events while moving
+  between their panel button and popup content.
+- The Classic GNOME status group has additional spacing, and its menu button
+  executes Hyprland's `$menu` variable with a documented fallback.
 - Panel module actions (workspace switch, favorites launch, menu button, and
   window-list focus) are dispatched instead of being dropped by the binary.
 - The `verbose_text_padding` theme key controls the gap between icon and
@@ -19,8 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slot.
 - Adjacent status modules render with configurable horizontal `module_gap`
   spacing; the shipped themes define their own values.
+- End-aligned modules retain their visual and pointer geometry, so workspace
+  controls stay on the right and status-module popups open from the correct
+  module bounds.
+- The application-menu button draws a built-in fallback when the configured
+  freedesktop icon is unavailable instead of rendering as an empty slot.
 
 ### Added
+
+- A popup-free `hyprcube` launcher in every shipped theme, using the former
+  menu-grid icon while the application menu uses a `>>` symbol.
+- A shared 2× presentation scale for all module popup panels, including
+  matching pointer-coordinate transforms and output-bound size caps.
 
 - Keyboard input support for panel and popup surfaces. Key presses go to the
   module owning an open popup, or the hovered module; Esc closes a popup.

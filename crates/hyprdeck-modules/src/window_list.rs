@@ -143,19 +143,15 @@ impl PanelModule for WindowListModule {
             .cloned()
             .collect();
 
-        // Check if anything changed.
-        let old_addrs: Vec<&str> = self
-            .buttons
-            .iter()
-            .map(|b| b.info.address.as_str())
-            .collect();
-        let new_addrs: Vec<&str> = new_windows.iter().map(|w| w.address.as_str()).collect();
-        let titles_changed = new_windows
-            .iter()
-            .zip(self.buttons.iter())
-            .any(|(nw, ob)| nw.title != ob.info.title || nw.is_focused != ob.info.is_focused);
-
-        if old_addrs == new_addrs && !titles_changed {
+        // Compare complete window records. Address-only comparison missed
+        // workspace/class changes, which could leave an icon or button stale
+        // after a compositor move event.
+        if new_windows.len() == self.buttons.len()
+            && new_windows
+                .iter()
+                .zip(self.buttons.iter())
+                .all(|(new_window, old_button)| new_window == &old_button.info)
+        {
             return false;
         }
 
@@ -210,20 +206,44 @@ impl PanelModule for WindowListModule {
             let icon_size = bounds.height - theme.padding.top - theme.padding.bottom;
             let mut content_x = bx + theme.padding.left;
 
-            if matches!(
-                self.config.style,
-                WindowListStyle::Icons | WindowListStyle::IconLabel
-            ) {
-                if let Some(icon) = &btn.icon {
-                    let icon_rect = Rect::new(
-                        content_x,
-                        bounds.y + theme.padding.top,
-                        icon_size,
-                        icon_size,
-                    );
-                    render_utils::draw_image(canvas, icon, icon_rect, 1.0);
-                    content_x += icon_size + 4.0;
-                }
+            let icon_rect = Rect::new(
+                content_x,
+                bounds.y + theme.padding.top,
+                icon_size,
+                icon_size,
+            );
+            if let Some(icon) = &btn.icon {
+                render_utils::draw_image(canvas, icon, icon_rect, 1.0);
+            } else {
+                let fallback = btn
+                    .info
+                    .class
+                    .chars()
+                    .next()
+                    .map(|character| character.to_uppercase().to_string())
+                    .unwrap_or_else(|| "?".into());
+                render_utils::fill_rounded_rect_alpha(
+                    canvas,
+                    icon_rect,
+                    theme.colors.foreground,
+                    theme.border_radius.max(2.0),
+                    0.14,
+                );
+                render_utils::draw_text_centered(
+                    canvas,
+                    &fallback,
+                    icon_rect,
+                    theme
+                        .fonts
+                        .bold_family
+                        .as_deref()
+                        .unwrap_or(&theme.fonts.family),
+                    icon_size * 0.62,
+                    theme.colors.foreground,
+                );
+            }
+            if !matches!(self.config.style, WindowListStyle::Icons) {
+                content_x += icon_size + 4.0;
             }
 
             if !matches!(self.config.style, WindowListStyle::Icons) {
@@ -337,6 +357,7 @@ mod tests {
             workspace_id: id,
             is_focused: focused,
             is_fullscreen: false,
+            is_urgent: false,
         }
     }
 

@@ -294,24 +294,211 @@ pub fn effective_font_size(available_height: f32, configured_size: f32) -> f32 {
     height_derived.max(configured_size)
 }
 
-/// Compute the canonical icon size for a module slot.
+/// Compute the square content rect shared by all status-icon renderers.
 ///
-/// The icon is a square with a 1 px inset on each side, sized to the shorter
-/// axis of the slot so it fits without clipping even in non-square slots (e.g.
-/// verbose-mode icon half, vertical panels).
-pub fn canonical_icon_size(slot: Rect) -> f32 {
-    (slot.width.min(slot.height) - 2.0).max(1.0)
+/// `padding` is measured from the module slot edge. The returned rect is a
+/// centered square, so it also works for an icon half in verbose mode and for
+/// vertical panels. Keeping this calculation in one place means a theme's
+/// icon padding affects lunar, network, power, and sound identically.
+pub fn icon_content_rect(slot: Rect, padding: f32) -> Rect {
+    let available = (slot.width.min(slot.height) - padding.max(0.0) * 2.0).max(1.0);
+    let x = slot.x + (slot.width - available) / 2.0;
+    let y = slot.y + (slot.height - available) / 2.0;
+    Rect::new(x, y, available, available)
 }
 
-/// Compute a centered square destination rect for an icon within a module slot.
+/// Draw a font-independent application-menu grid centered in `bounds`.
 ///
-/// The returned rect has side length `icon_size`, centered on both axes within
-/// `slot`.  Its top-left is at `(slot.x + (slot.width  - icon_size) / 2,
-///                               slot.y + (slot.height - icon_size) / 2)`.
-pub fn centered_icon_rect(slot: Rect, icon_size: f32) -> Rect {
-    let x = slot.x + (slot.width - icon_size) / 2.0;
-    let y = slot.y + (slot.height - icon_size) / 2.0;
-    Rect::new(x, y, icon_size, icon_size)
+/// This is used as a dependable fallback when the configured freedesktop icon
+/// is absent from the current icon theme.
+pub fn draw_menu_icon(pixmap: &mut Pixmap, bounds: Rect, color: Color) {
+    let side = bounds.width.min(bounds.height);
+    if side <= 0.0 {
+        return;
+    }
+
+    let cell = (side / 6.0).max(1.0);
+    let gap = cell * 0.75;
+    let grid = cell * 3.0 + gap * 2.0;
+    let start_x = bounds.x + (bounds.width - grid) / 2.0;
+    let start_y = bounds.y + (bounds.height - grid) / 2.0;
+
+    for row in 0..3 {
+        for column in 0..3 {
+            fill_rounded_rect(
+                pixmap,
+                Rect::new(
+                    start_x + column as f32 * (cell + gap),
+                    start_y + row as f32 * (cell + gap),
+                    cell,
+                    cell,
+                ),
+                color,
+                cell * 0.25,
+            );
+        }
+    }
+}
+
+/// Draw a font-independent power icon centered in `bounds`.
+pub fn draw_power_icon(pixmap: &mut Pixmap, bounds: Rect, color: Color) {
+    let side = bounds.width.min(bounds.height);
+    if side <= 0.0 {
+        return;
+    }
+    let scale = side / 24.0;
+    let center = bounds.center();
+    let stroke_width = (2.25 * scale).max(1.0);
+    let radius = 7.6 * scale;
+
+    let mut ring = PathBuilder::new();
+    ring.move_to(center.x - radius * 0.58, center.y - radius * 0.78);
+    ring.cubic_to(
+        center.x - radius * 1.05,
+        center.y - radius * 0.28,
+        center.x - radius * 1.05,
+        center.y + radius * 0.65,
+        center.x,
+        center.y + radius,
+    );
+    ring.cubic_to(
+        center.x + radius * 1.05,
+        center.y + radius * 0.65,
+        center.x + radius * 1.05,
+        center.y - radius * 0.28,
+        center.x + radius * 0.58,
+        center.y - radius * 0.78,
+    );
+    if let Some(path) = ring.finish() {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+        paint.anti_alias = true;
+        pixmap.stroke_path(
+            &path,
+            &paint,
+            &Stroke {
+                width: stroke_width,
+                line_cap: LineCap::Round,
+                ..Stroke::default()
+            },
+            Transform::identity(),
+            None,
+        );
+    }
+
+    draw_line(
+        pixmap,
+        Point::new(center.x, center.y - radius * 1.24),
+        Point::new(center.x, center.y - radius * 0.08),
+        color,
+        stroke_width,
+    );
+}
+
+/// Draw a font-independent speaker icon centered in `bounds`.
+///
+/// The number of waves communicates low, medium, or high volume. Muted and
+/// zero-volume states use a diagonal slash instead of waves.
+pub fn draw_speaker_icon(
+    pixmap: &mut Pixmap,
+    bounds: Rect,
+    color: Color,
+    volume_percent: u32,
+    muted: bool,
+) {
+    let side = bounds.width.min(bounds.height);
+    if side <= 0.0 {
+        return;
+    }
+    let scale = side / 24.0;
+    let cx = bounds.x + (bounds.width - 24.0 * scale) / 2.0;
+    let cy = bounds.y + (bounds.height - 24.0 * scale) / 2.0;
+    let p = |x: f32, y: f32| Point::new(cx + x * scale, cy + y * scale);
+
+    let mut body = PathBuilder::new();
+    body.move_to(p(3.0, 9.0).x, p(3.0, 9.0).y);
+    body.line_to(p(7.5, 9.0).x, p(7.5, 9.0).y);
+    body.line_to(p(13.0, 4.5).x, p(13.0, 4.5).y);
+    body.line_to(p(13.0, 19.5).x, p(13.0, 19.5).y);
+    body.line_to(p(7.5, 15.0).x, p(7.5, 15.0).y);
+    body.line_to(p(3.0, 15.0).x, p(3.0, 15.0).y);
+    body.close();
+    if let Some(path) = body.finish() {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+        paint.anti_alias = true;
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    let stroke_width = (2.0 * scale).max(1.0);
+    if muted || volume_percent == 0 {
+        draw_line(pixmap, p(4.0, 4.0), p(20.0, 20.0), color, stroke_width);
+        return;
+    }
+
+    let wave_count = speaker_wave_count(volume_percent);
+    draw_speaker_wave(
+        pixmap,
+        p(15.0, 9.0),
+        p(18.5, 12.0),
+        p(15.0, 15.0),
+        color,
+        stroke_width,
+    );
+    if wave_count >= 2 {
+        draw_speaker_wave(
+            pixmap,
+            p(17.0, 6.0),
+            p(22.0, 12.0),
+            p(17.0, 18.0),
+            color,
+            stroke_width,
+        );
+    }
+}
+
+/// Number of speaker waves for a non-muted volume level.
+pub fn speaker_wave_count(volume_percent: u32) -> u8 {
+    match volume_percent {
+        0..=32 => 1,
+        _ => 2,
+    }
+}
+
+fn draw_speaker_wave(
+    pixmap: &mut Pixmap,
+    start: Point,
+    control: Point,
+    end: Point,
+    color: Color,
+    width: f32,
+) {
+    let mut wave = PathBuilder::new();
+    wave.move_to(start.x, start.y);
+    wave.quad_to(control.x, control.y, end.x, end.y);
+    let Some(path) = wave.finish() else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+    paint.anti_alias = true;
+    pixmap.stroke_path(
+        &path,
+        &paint,
+        &Stroke {
+            width,
+            line_cap: LineCap::Round,
+            ..Stroke::default()
+        },
+        Transform::identity(),
+        None,
+    );
 }
 
 // ── Verbose display mode ──────────────────────────────────────────────────────
@@ -345,7 +532,7 @@ pub fn verbose_split(bounds: Rect, gap: f32) -> (Rect, Rect) {
 /// `verbose_text_padding`.
 ///
 /// The icon half is computed via [`verbose_split`] /
-/// [`canonical_icon_size`] / [`centered_icon_rect`] and handed to `draw_icon`;
+/// [`icon_content_rect`] and handed to `draw_icon`;
 /// the readout is drawn with the bold family (falling back to the regular
 /// family) at [`effective_font_size`].
 pub fn draw_verbose(
@@ -357,8 +544,7 @@ pub fn draw_verbose(
     draw_icon: impl FnOnce(&mut Pixmap, Rect),
 ) {
     let (icon_half, text_half) = verbose_split(bounds, theme.verbose_text_padding);
-    let icon_size = canonical_icon_size(icon_half);
-    let icon_rect = centered_icon_rect(icon_half, icon_size);
+    let icon_rect = icon_content_rect(icon_half, theme.icon_padding);
     draw_icon(canvas, icon_rect);
 
     let font = theme
@@ -632,43 +818,78 @@ mod tests {
     }
 
     #[test]
-    fn centered_icon_rect_topleft_formula() {
-        // Top-left must be at ((W - S) / 2, (H - S) / 2) relative to slot origin.
+    fn icon_content_rect_centers_the_inset_square() {
         let slot = Rect::new(0.0, 0.0, 80.0, 60.0);
-        let s = 40.0_f32;
-        let r = centered_icon_rect(slot, s);
-        assert_eq!(r.x, (80.0_f32 - s) / 2.0);
-        assert_eq!(r.y, (60.0_f32 - s) / 2.0);
-        assert_eq!(r.width, s);
-        assert_eq!(r.height, s);
+        let r = icon_content_rect(slot, 4.0);
+        assert_eq!(r.x, 14.0);
+        assert_eq!(r.y, 4.0);
+        assert_eq!(r.width, 52.0);
+        assert_eq!(r.height, 52.0);
     }
 
     #[test]
-    fn centered_icon_rect_with_nonzero_slot_origin() {
+    fn icon_content_rect_handles_nonzero_slot_origin() {
         let slot = Rect::new(10.0, 20.0, 80.0, 60.0);
-        let s = 40.0_f32;
-        let r = centered_icon_rect(slot, s);
-        assert_eq!(r.x, 10.0 + (80.0_f32 - s) / 2.0);
-        assert_eq!(r.y, 20.0 + (60.0_f32 - s) / 2.0);
+        let r = icon_content_rect(slot, 2.0);
+        assert_eq!(r.x, 22.0);
+        assert_eq!(r.y, 22.0);
+        assert_eq!(r.width, 56.0);
+        assert_eq!(r.height, 56.0);
     }
 
     #[test]
-    fn canonical_icon_size_uses_shorter_axis_minus_two() {
-        // For a 26 × 24 slot (wider than tall) the shorter axis is 24, giving 22.
+    fn icon_content_rect_uses_shorter_axis_and_theme_padding() {
         let slot = Rect::new(0.0, 0.0, 26.0, 24.0);
-        assert_eq!(canonical_icon_size(slot), 22.0);
+        let r = icon_content_rect(slot, 2.0);
+        assert_eq!(r.width, 20.0);
+        assert_eq!(r.height, 20.0);
+        assert_eq!(r.x, 3.0);
+        assert_eq!(r.y, 2.0);
     }
 
     #[test]
-    fn canonical_icon_size_square_slot() {
-        let slot = Rect::new(0.0, 0.0, 24.0, 24.0);
-        assert_eq!(canonical_icon_size(slot), 22.0);
-    }
-
-    #[test]
-    fn canonical_icon_size_minimum_is_one() {
+    fn icon_content_rect_preserves_a_minimum_size() {
         let slot = Rect::new(0.0, 0.0, 1.0, 1.0);
-        assert_eq!(canonical_icon_size(slot), 1.0);
+        let r = icon_content_rect(slot, 8.0);
+        assert_eq!(r.width, 1.0);
+        assert_eq!(r.height, 1.0);
+    }
+
+    #[test]
+    fn vector_status_icons_paint_pixels() {
+        let mut power = Pixmap::new(32, 32).unwrap();
+        draw_power_icon(
+            &mut power,
+            Rect::new(4.0, 4.0, 24.0, 24.0),
+            [255, 255, 255, 255],
+        );
+        assert!(power.data().chunks_exact(4).any(|px| px[3] > 0));
+
+        let mut speaker = Pixmap::new(32, 32).unwrap();
+        draw_speaker_icon(
+            &mut speaker,
+            Rect::new(4.0, 4.0, 24.0, 24.0),
+            [255, 255, 255, 255],
+            75,
+            false,
+        );
+        assert!(speaker.data().chunks_exact(4).any(|px| px[3] > 0));
+
+        let mut menu = Pixmap::new(32, 32).unwrap();
+        draw_menu_icon(
+            &mut menu,
+            Rect::new(4.0, 4.0, 24.0, 24.0),
+            [255, 255, 255, 255],
+        );
+        assert!(menu.data().chunks_exact(4).any(|px| px[3] > 0));
+    }
+
+    #[test]
+    fn speaker_wave_count_is_stable_at_volume_boundaries() {
+        assert_eq!(speaker_wave_count(1), 1);
+        assert_eq!(speaker_wave_count(32), 1);
+        assert_eq!(speaker_wave_count(33), 2);
+        assert_eq!(speaker_wave_count(150), 2);
     }
 
     #[test]

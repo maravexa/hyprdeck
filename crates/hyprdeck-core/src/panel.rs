@@ -55,6 +55,9 @@ pub struct Panel {
     pub surface_height: u32,
     /// SCTK layer surface handle. `None` until Wayland surfaces are created.
     pub layer_surface: Option<LayerSurface>,
+    /// Whether the compositor has acknowledged the current layer surface.
+    /// Buffers must not be attached before its first configure event.
+    pub surface_configured: bool,
     /// SHM slot pool for buffer allocation. `None` until Wayland surfaces are created.
     pub pool: Option<SlotPool>,
 }
@@ -125,6 +128,18 @@ impl Panel {
             padding: style.padding,
             border_radius: style.border_radius,
             opacity: style.background_opacity,
+            // Icon-only status modules are square and occupy the panel's
+            // padded cross-axis thickness. This stays correct for vertical
+            // panels, whose cross axis is horizontal.
+            icon_slot_size: match edge {
+                Edge::Top | Edge::Bottom => {
+                    (style.bar_height as f32 - style.padding.top - style.padding.bottom).max(1.0)
+                }
+                Edge::Left | Edge::Right => {
+                    (style.bar_height as f32 - style.padding.left - style.padding.right).max(1.0)
+                }
+            },
+            icon_padding: style.icon_padding,
             verbose_text_padding: style
                 .verbose_text_padding
                 .unwrap_or(style.bar_height as f32 / 8.0),
@@ -148,6 +163,7 @@ impl Panel {
             surface_width,
             surface_height,
             layer_surface: None,
+            surface_configured: false,
             pool: None,
         }
     }
@@ -171,6 +187,12 @@ impl Panel {
                 needs_redraw = true;
             }
         }
+        // Popup content is independent of the panel module render pass.  It
+        // still needs the same regular update cadence so open dropdowns can
+        // observe shared module state (for example external audio changes).
+        if self.popup.update() {
+            needs_redraw = true;
+        }
         if needs_redraw {
             self.dirty = true;
         }
@@ -186,6 +208,9 @@ impl Panel {
         let needs_redraw = matches!(
             event,
             HyprEvent::WorkspaceChanged { .. }
+                | HyprEvent::WorkspaceMoved { .. }
+                | HyprEvent::WorkspaceRenamed { .. }
+                | HyprEvent::ActiveMonitor { .. }
                 | HyprEvent::ActiveWindow { .. }
                 | HyprEvent::ActiveWindowV2 { .. }
                 | HyprEvent::WindowOpened { .. }
@@ -197,6 +222,8 @@ impl Panel {
                 | HyprEvent::Fullscreen { .. }
                 | HyprEvent::WorkspaceAdded { .. }
                 | HyprEvent::WorkspaceDestroyed { .. }
+                | HyprEvent::MonitorAdded { .. }
+                | HyprEvent::MonitorRemoved { .. }
         );
         if needs_redraw {
             self.dirty = true;
@@ -219,22 +246,6 @@ impl Panel {
     ///   should flush the Wayland connection.
     /// - [`InputResult::None`] — event consumed or ignored with no side effects.
     pub fn handle_input(&mut self, event: InputEvent) -> InputResult {
-        tracing::trace!("Panel::handle_input called with {:?}", event);
-        tracing::debug!("  last_layout exists: {}", self.last_layout.is_some());
-        if let Some(layout) = &self.last_layout {
-            tracing::debug!("  module_bounds count: {}", layout.module_bounds.len());
-            for (id, bounds) in &layout.module_bounds {
-                tracing::debug!(
-                    "  module '{}': x={:.0} y={:.0} w={:.0} h={:.0}",
-                    id,
-                    bounds.x,
-                    bounds.y,
-                    bounds.width,
-                    bounds.height
-                );
-            }
-        }
-
         // Update auto-hide state
         match &event {
             InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. } => {}
@@ -290,6 +301,32 @@ impl Panel {
             return InputResult::None;
         }
 
+        // Scroll has no pointer coordinates.  The Wayland integration keeps
+        // `hovered_module` current from motion events, so route it there.
+        if matches!(&event, InputEvent::Scroll { .. }) {
+            let Some(target_id) = self.hovered_module.clone() else {
+                return InputResult::None;
+            };
+            let Some(bounds) = layout
+                .module_bounds
+                .iter()
+                .find(|(id, _)| *id == target_id)
+                .map(|(_, b)| *b)
+            else {
+                return InputResult::None;
+            };
+            if let Some(module) = self.modules.iter_mut().find(|m| m.id() == target_id) {
+                match module.handle_event(&event, bounds) {
+                    EventResult::Action(action) => return InputResult::Action(action),
+                    EventResult::Handled => {
+                        self.dirty = true;
+                    }
+                    EventResult::Ignored => {}
+                }
+            }
+            return InputResult::None;
+        }
+
         let point = match &event {
             InputEvent::MousePress { x, y, .. }
             | InputEvent::MouseRelease { x, y, .. }
@@ -305,14 +342,6 @@ impl Panel {
                     if matches!(&event, InputEvent::MouseMove { .. }) {
                         self.hovered_module = Some(module_id.clone());
                     }
-                    // Stage 4: log every module hit.
-                    if matches!(
-                        &event,
-                        InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }
-                    ) {
-                        tracing::info!("HIT module '{}' at ({:.0}, {:.0})", module_id, pt.x, pt.y);
-                    }
-
                     // Left-click on a popup-capable module toggles its popup.
                     if let InputEvent::MousePress {
                         button: MouseButton::Left,
@@ -325,9 +354,7 @@ impl Panel {
                             .find(|m| m.id() == module_id.as_str())
                             .map(|m| m.has_popup())
                             .unwrap_or(false);
-                        tracing::info!("  has_popup={}", has_popup);
                         if has_popup {
-                            tracing::info!("Toggling popup for module '{}'", module_id);
                             // Record whether this module's popup was already open
                             // so we can distinguish open vs close after the toggle.
                             let was_open =
@@ -337,9 +364,14 @@ impl Panel {
                                 .iter()
                                 .find(|m| m.id() == module_id.as_str())
                                 .and_then(|m| m.popup_content());
-                            if let Some(c) = content {
-                                self.popup.toggle(module_id, || c);
-                            }
+                            let Some(content) = content else {
+                                tracing::warn!(
+                                    "Module '{}' advertises a popup but returned no content",
+                                    module_id
+                                );
+                                return InputResult::None;
+                            };
+                            self.popup.toggle(module_id, || content);
                             self.dirty = true;
                             if was_open {
                                 // Toggle closed the popup.
@@ -372,20 +404,6 @@ impl Panel {
             }
             if !hit_any && matches!(&event, InputEvent::MouseMove { .. }) {
                 self.hovered_module = None;
-            }
-            // Stage 4: warn when a click lands outside every module's bounds.
-            if !hit_any
-                && matches!(
-                    &event,
-                    InputEvent::MousePress { .. } | InputEvent::MouseRelease { .. }
-                )
-            {
-                tracing::warn!(
-                    "Click at ({:.0}, {:.0}) missed all {} module bound(s)",
-                    pt.x,
-                    pt.y,
-                    layout.module_bounds.len()
-                );
             }
         }
 
@@ -445,6 +463,10 @@ impl Panel {
 
     /// Run layout and render if dirty. Returns true if a frame was produced.
     pub fn frame(&mut self, display: &DisplayGeometry) -> bool {
+        if self.layer_surface.is_some() && !self.surface_configured {
+            return false;
+        }
+
         // Tick dock animation
         let dock_animating = self.layout.tick_animation(1.0 / 60.0);
         if dock_animating {
@@ -639,6 +661,8 @@ pub struct ResolvedStyle {
     pub padding: Padding,
     pub border_radius: f32,
     pub background_opacity: f32,
+    /// Inset between an icon-only module slot and its drawn content.
+    pub icon_padding: f32,
     /// Separator line styling between adjacent modules.
     pub separator: ResolvedSeparator,
     /// Blank space between adjacent module slots in logical pixels.
@@ -677,6 +701,14 @@ pub struct ResolvedWorkspacesStyle {
     pub active_foreground: Color,
     pub inactive_background: Color,
     pub inactive_foreground: Color,
+    /// Background for a workspace owned by another output.
+    pub remote_background: Color,
+    /// Foreground for a workspace owned by another output.
+    pub remote_foreground: Color,
+    /// Deliberately muted urgency background for another output.
+    pub remote_urgent_background: Color,
+    /// Foreground for a muted urgent workspace on another output.
+    pub remote_urgent_foreground: Color,
 }
 
 impl Default for ResolvedModuleStyles {
@@ -693,6 +725,10 @@ impl Default for ResolvedModuleStyles {
                 active_foreground: [30, 30, 30, 255],
                 inactive_background: [255, 255, 255, 80],
                 inactive_foreground: [255, 255, 255, 255],
+                remote_background: [128, 128, 128, 80],
+                remote_foreground: [192, 192, 192, 190],
+                remote_urgent_background: [150, 96, 96, 190],
+                remote_urgent_foreground: [245, 225, 225, 220],
             },
         }
     }
@@ -711,6 +747,9 @@ impl ResolvedModuleStyles {
 
         let mut inactive_ws = colors.foreground;
         inactive_ws[3] = 80;
+        let remote_ws = muted_color(colors.foreground, 96, 80);
+        let remote_foreground = muted_color(colors.foreground, 160, 190);
+        let remote_urgent = muted_color(colors.urgent, 112, 190);
 
         Self {
             window_list: ResolvedWindowListStyle {
@@ -724,9 +763,20 @@ impl ResolvedModuleStyles {
                 active_foreground: colors.background,
                 inactive_background: inactive_ws,
                 inactive_foreground: colors.foreground,
+                remote_background: remote_ws,
+                remote_foreground,
+                remote_urgent_background: remote_urgent,
+                remote_urgent_foreground: remote_foreground,
             },
         }
     }
+}
+
+/// Desaturate `color` toward a neutral value while retaining enough alpha for
+/// the workspace indicator to read as deliberately remote rather than absent.
+fn muted_color(color: Color, neutral: u8, alpha: u8) -> Color {
+    let mix = |channel: u8| ((u16::from(channel) + u16::from(neutral)) / 2) as u8;
+    [mix(color[0]), mix(color[1]), mix(color[2]), alpha]
 }
 
 /// RGBA colour palette for a panel.
@@ -814,6 +864,7 @@ mod tests {
     use crate::autohide::AutoHideMode;
     use crate::layout::{HorizontalLayout, LayoutEngine, ModuleGroups};
     use crate::module::{EventResult, InputEvent, ModuleConfigSchema, MouseButton};
+    use crate::popup::{PopupContent, PopupEventResult};
     use tiny_skia::Pixmap;
 
     /// Minimal test module for unit tests.
@@ -871,6 +922,61 @@ mod tests {
         }
     }
 
+    struct TestPopupContent;
+
+    impl PopupContent for TestPopupContent {
+        fn desired_size(&self, _theme: &ThemeContext) -> Size {
+            Size::new(160.0, 120.0)
+        }
+
+        fn render(&self, _canvas: &mut Pixmap, _theme: &ThemeContext, _bounds: Rect) {}
+
+        fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+            PopupEventResult::Ignored
+        }
+
+        fn update(&mut self) -> bool {
+            false
+        }
+    }
+
+    struct TestPopupModule;
+
+    impl PanelModule for TestPopupModule {
+        fn id(&self) -> &str {
+            "popup"
+        }
+
+        fn desired_size(&self, _theme: &ThemeContext) -> Size {
+            Size::new(60.0, 32.0)
+        }
+
+        fn update(&mut self, _ctx: &UpdateContext<'_>) -> bool {
+            false
+        }
+
+        fn render(&self, _canvas: &mut Pixmap, _theme: &ThemeContext, _bounds: Rect) {}
+
+        fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> EventResult {
+            EventResult::Ignored
+        }
+
+        fn config_schema(&self) -> ModuleConfigSchema {
+            ModuleConfigSchema {
+                module_id: self.id().to_owned(),
+                fields: vec![],
+            }
+        }
+
+        fn has_popup(&self) -> bool {
+            true
+        }
+
+        fn popup_content(&self) -> Option<Box<dyn PopupContent>> {
+            Some(Box::new(TestPopupContent))
+        }
+    }
+
     fn test_style() -> ResolvedStyle {
         ResolvedStyle {
             colors: ColorPalette {
@@ -895,6 +1001,7 @@ mod tests {
             },
             border_radius: 0.0,
             background_opacity: 0.9,
+            icon_padding: 2.0,
             separator: ResolvedSeparator::default(),
             module_gap: 0.0,
             verbose_text_padding: None,
@@ -1111,6 +1218,39 @@ mod tests {
     }
 
     #[test]
+    fn theme_ctx_derives_icon_slot_from_cross_axis_content() {
+        let mut horizontal = test_style();
+        horizontal.bar_height = 40;
+        horizontal.padding.top = 3.0;
+        horizontal.padding.bottom = 5.0;
+        let panel = Panel::new(
+            Edge::Top,
+            horizontal,
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            ModuleGroups::default(),
+            1920,
+            40,
+        );
+        assert_eq!(panel.theme_ctx.icon_slot_size, 32.0);
+
+        let mut vertical = test_style();
+        vertical.bar_height = 48;
+        vertical.padding.left = 6.0;
+        vertical.padding.right = 8.0;
+        let panel = Panel::new(
+            Edge::Left,
+            vertical,
+            AutoHideMode::Disabled,
+            LayoutEngine::Vertical(super::super::layout::VerticalLayout::new()),
+            ModuleGroups::default(),
+            48,
+            1080,
+        );
+        assert_eq!(panel.theme_ctx.icon_slot_size, 34.0);
+    }
+
+    #[test]
     fn module_size_adapter_returns_correct_sizes() {
         let panel = test_panel();
         let adapter = ModuleSizeAdapter(&panel.modules, &panel.theme_ctx);
@@ -1149,11 +1289,67 @@ mod tests {
     }
 
     #[test]
+    fn right_aligned_module_hover_and_click_open_its_popup() {
+        let groups = ModuleGroups {
+            start: vec![],
+            center: vec![],
+            end: vec!["popup".into()],
+        };
+        let mut panel = Panel::new(
+            Edge::Top,
+            test_style(),
+            AutoHideMode::Disabled,
+            LayoutEngine::Horizontal(HorizontalLayout::new()),
+            groups,
+            400,
+            32,
+        );
+        panel.set_modules(vec![Box::new(TestPopupModule)]);
+        panel.frame(&DisplayGeometry {
+            bounds: Rect::new(0.0, 0.0, 400.0, 32.0),
+            usable_region: None,
+            edge_path: None,
+        });
+
+        let bounds = panel.last_layout.as_ref().unwrap().module_bounds[0].1;
+        assert!(bounds.x > 300.0, "end group should remain right-aligned");
+        let x = bounds.x + bounds.width / 2.0;
+        let y = bounds.y + bounds.height / 2.0;
+
+        assert!(matches!(
+            panel.handle_input(InputEvent::MouseMove { x, y }),
+            InputResult::None
+        ));
+        assert_eq!(panel.hovered_module.as_deref(), Some("popup"));
+
+        let result = panel.handle_input(InputEvent::MousePress {
+            x,
+            y,
+            button: MouseButton::Left,
+        });
+        assert!(matches!(
+            result,
+            InputResult::OpenPopup {
+                ref module_id,
+                module_bounds
+            } if module_id == "popup"
+                && module_bounds.x == bounds.x
+                && module_bounds.y == bounds.y
+                && module_bounds.width == bounds.width
+                && module_bounds.height == bounds.height
+        ));
+        assert_eq!(panel.popup.active_module.as_deref(), Some("popup"));
+        assert!(panel.popup.content.is_some());
+    }
+
+    #[test]
     fn handle_hypr_event_marks_dirty_for_workspace_change() {
         let mut panel = test_panel();
         panel.dirty = false;
 
-        let event = crate::ipc::event::HyprEvent::WorkspaceChanged { id: 2 };
+        let event = crate::ipc::event::HyprEvent::WorkspaceChanged {
+            workspace: crate::ipc::event::WorkspaceRef::Id(2),
+        };
         let needs_redraw = panel.handle_hypr_event(&event);
         assert!(needs_redraw);
         assert!(panel.dirty);

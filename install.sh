@@ -1,3 +1,3 @@
 #!/bin/bash
 cargo build --release
-sudo install -Dm755 target/release/hyprdeck /usr/local/sbin/hyprdeck
+sudo install -Dm755 target/release/hyprdeck /usr/local/bin/hyprdeck

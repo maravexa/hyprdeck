@@ -1,6 +1,13 @@
 # Modules
 
-Built-in modules are registered in `hyprdeck-modules::create_module`. The recognized IDs are `calendar`, `clock`, `favorites`, `lunar`, `menu_button`, `network`, `power`, `shell`, `sound`, `weather`, `window_list`, and `workspaces`. A theme places IDs in its panel arrays; the application then passes the matching `[modules.<id>]` TOML table to the registry.
+Built-in modules are registered in `hyprdeck-modules::create_module`. The
+recognized IDs are `calendar`, `clock`, `favorites`, `hyprcube`, `lunar`,
+`menu_button`, `network`, `power`, `shell`, `sound`, `weather`, `window_list`,
+and `workspaces`. A theme places IDs in its panel arrays; the application then
+passes the matching `[modules.<id>]` TOML table to the registry. `hyprcube` is
+a direct launcher with no popup; its default icon is the desktop menu grid.
+`menu_button` uses a compact `>>` label by default and executes Hyprland's
+`$menu` variable.
 
 ## Lifecycle
 
@@ -11,7 +18,11 @@ A module implements the `hyprdeck_core::PanelModule` trait. All trait calls occu
 3. `update()` receives the current time, Hyprland state, and output name; returning `true` schedules a redraw.
 4. `render()` draws only within its provided bounds in the shared `tiny_skia::Pixmap`.
 5. `handle_event()` returns `Ignored`, `Handled`, or an `Action` for panel dispatch.
-6. `config_schema()` describes configuration fields for consumers of that API. Popup modules additionally opt in with `has_popup()` and provide `popup_content()`.
+6. `config_schema()` describes configuration fields for consumers of that API. Popup modules additionally opt in with `has_popup()` and provide `popup_content()`. Open popup content receives the regular module-update cadence through `PopupContent::update()`, so it can reflect shared asynchronous state without blocking rendering.
+
+All popup content is presented at the shared 2× popup scale. Rendering and
+pointer coordinates are transformed together, so hit targets and sliders stay
+aligned with the enlarged content.
 
 Modules that need I/O should keep `update()` non-blocking: start background work and move completed values into module state on a later update.
 

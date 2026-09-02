@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::io::{AsFd, AsRawFd, RawFd};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use smithay_client_toolkit::{
@@ -28,14 +28,57 @@ use tracing::{debug, error, info, trace, warn};
 use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
+    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
 };
+
+mod instance;
+mod notifications;
 
 use hyprdeck_core::ipc::HyprIpc;
 use hyprdeck_core::{
-    App, Edge, InputEvent, InputResult, MouseButton, PopupEventResult, Rect, dispatch_action,
-    keymod,
+    App, Edge, InputEvent, InputResult, MouseButton, NOTIFICATION_HEIGHT, Notification,
+    NotificationCenter, PopupEventResult, Rect, dispatch_action, keymod, notification_placement,
+    render_notification,
 };
+use tokio::sync::mpsc;
+
+use crate::instance::{InstanceClaim, InstanceControl};
+use crate::notifications::NotificationCommand;
+
+const POPUP_LEAVE_GRACE: Duration = Duration::from_millis(300);
+
+#[derive(Default)]
+struct PopupCloseTracker {
+    pending: HashMap<(String, usize), Instant>,
+}
+
+impl PopupCloseTracker {
+    fn schedule(&mut self, output_name: &str, panel_idx: usize, now: Instant) {
+        self.pending
+            .insert((output_name.to_owned(), panel_idx), now + POPUP_LEAVE_GRACE);
+    }
+
+    fn cancel(&mut self, output_name: &str, panel_idx: usize) {
+        self.pending.remove(&(output_name.to_owned(), panel_idx));
+    }
+
+    fn take_expired(&mut self, now: Instant) -> Vec<(String, usize)> {
+        let expired = self
+            .pending
+            .iter()
+            .filter(|(_, deadline)| **deadline <= now)
+            .map(|(owner, _)| owner.clone())
+            .collect::<Vec<_>>();
+        for owner in &expired {
+            self.pending.remove(owner);
+        }
+        expired
+    }
+
+    fn clear(&mut self) {
+        self.pending.clear();
+    }
+}
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -71,6 +114,63 @@ struct AppState {
     modifiers: u32,
     /// Path to the Hyprland command socket, used when dispatching actions from popup events.
     hypr_socket: std::path::PathBuf,
+    /// Notifications received by the D-Bus service. Surfaces are owned here
+    /// because the Wayland queue must be manipulated on this event-loop task.
+    notification_center: NotificationCenter,
+    notification_surfaces: HashMap<u32, NotificationSurface>,
+    notification_output: Option<String>,
+    /// Popups scheduled to close after the pointer leaves their surface.
+    /// A short grace period lets the pointer cross panel/popup surface seams.
+    popup_close: PopupCloseTracker,
+}
+
+/// One configured notification overlay. It intentionally does not reuse the
+/// module-popup state: notifications have independent lifetime and stacking.
+struct NotificationSurface {
+    notification: Notification,
+    output_name: String,
+    layer_surface: LayerSurface,
+    canvas: hyprdeck_core::Canvas,
+    pool: SlotPool,
+    width: u32,
+    height: u32,
+    configured: bool,
+}
+
+impl NotificationSurface {
+    fn render(&mut self, theme: &hyprdeck_core::ThemeContext) {
+        if !self.configured {
+            return;
+        }
+        render_notification(&mut self.canvas, &self.notification, theme);
+        let stride = self.width as i32 * 4;
+        let (buffer, data) = match self.pool.create_buffer(
+            self.width as i32,
+            self.height as i32,
+            stride,
+            wl_shm::Format::Argb8888,
+        ) {
+            Ok(pair) => pair,
+            Err(error) => {
+                error!(?error, "failed to allocate notification buffer");
+                return;
+            }
+        };
+        let source = self.canvas.data();
+        for index in 0..(data.len().min(source.len()) / 4) {
+            data[index * 4] = source[index * 4 + 2];
+            data[index * 4 + 1] = source[index * 4 + 1];
+            data[index * 4 + 2] = source[index * 4];
+            data[index * 4 + 3] = source[index * 4 + 3];
+        }
+        let surface = self.layer_surface.wl_surface();
+        if let Err(error) = buffer.attach_to(surface) {
+            error!(?error, "failed to attach notification buffer");
+            return;
+        }
+        surface.damage_buffer(0, 0, self.width as i32, self.height as i32);
+        surface.commit();
+    }
 }
 
 /// Pack SCTK keyboard modifiers into [`keymod`] bitflags.
@@ -94,6 +194,228 @@ fn pack_modifiers(m: &Modifiers) -> u32 {
 }
 
 impl AppState {
+    fn reload_bar(
+        &mut self,
+        config_path: &std::path::Path,
+        state: &hyprdeck_core::HyprState,
+        qh: &QueueHandle<AppState>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let config = hyprdeck_core::Config::load(config_path)?;
+        let theme = hyprdeck_themes::load_theme(&config.theme)?;
+        info!(theme = %theme.name, "refreshing existing HyprDeck instance");
+
+        self.close_all_popups();
+        self.popup_close.clear();
+        self.notification_surfaces.clear();
+        self.notification_output = None;
+        self.app.reload(config, theme);
+        self.reconcile_output_topology(state, qh);
+        self.app.tick_modules(chrono::Local::now(), state);
+        self.sync_notification_surfaces(state, qh, true);
+        Ok(())
+    }
+
+    /// Reconcile binary-owned Wayland panels with the latest authoritative
+    /// Hyprland monitor snapshot.
+    ///
+    /// Socket monitor-add events contain no dimensions, and topology can
+    /// change while the event socket reconnects. Running this against the
+    /// hydrated state avoids creating 0x0 panels and repairs missed add/remove
+    /// events once both Hyprland and Wayland advertise the output.
+    fn reconcile_output_topology(
+        &mut self,
+        state: &hyprdeck_core::HyprState,
+        qh: &QueueHandle<AppState>,
+    ) -> bool {
+        let desired_names: HashSet<&str> = state
+            .monitors
+            .iter()
+            .map(|monitor| monitor.name.as_str())
+            .collect();
+        let stale = self
+            .app
+            .outputs
+            .keys()
+            .filter(|name| !desired_names.contains(name.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut changed = !stale.is_empty();
+        for name in stale {
+            self.app.remove_output(&name);
+        }
+
+        let available = state
+            .monitors
+            .iter()
+            .filter(|monitor| {
+                monitor.width > 0
+                    && monitor.height > 0
+                    && self.wl_outputs.contains_key(&monitor.name)
+            })
+            .map(|monitor| (monitor.name.clone(), monitor.width, monitor.height))
+            .collect::<Vec<_>>();
+        for (name, width, height) in available {
+            let needs_rebuild = self
+                .app
+                .outputs
+                .get(&name)
+                .is_none_or(|output| output.width != width || output.height != height);
+            if needs_rebuild {
+                self.app.remove_output(&name);
+                self.app.add_output(name.clone(), width, height);
+                self.create_surfaces_for_output(&name, qh);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn process_notification(&mut self, command: NotificationCommand) -> bool {
+        let config = &self.app.config.notifications;
+        match command {
+            NotificationCommand::Notify(request) => {
+                let change =
+                    self.notification_center
+                        .notify(request, config, std::time::Instant::now());
+                debug!(?change, "notification queue updated");
+                true
+            }
+            NotificationCommand::Close(id) => self.notification_center.close(id).is_some(),
+        }
+    }
+
+    fn expire_notifications(&mut self) -> bool {
+        let expired = self.notification_center.expire(std::time::Instant::now());
+        if !expired.is_empty() {
+            debug!(?expired, "expired notifications removed");
+        }
+        !expired.is_empty()
+    }
+
+    /// Resolve `focused`, `primary`, or an explicitly named target output.
+    fn notification_target(&self, state: &hyprdeck_core::HyprState) -> Option<String> {
+        let selected = self.app.config.notifications.monitor.as_str();
+        let target = match selected {
+            "focused" => state.focused_monitor.as_str(),
+            // Hyprland does not expose an independent primary-output flag in
+            // its monitor JSON. Its first monitor is the stable primary
+            // fallback used by HyprDeck's daemon.
+            "primary" => state
+                .monitors
+                .first()
+                .map(|monitor| monitor.name.as_str())?,
+            output => output,
+        };
+        self.app
+            .outputs
+            .contains_key(target)
+            .then(|| target.to_owned())
+    }
+
+    fn sync_notification_surfaces(
+        &mut self,
+        state: &hyprdeck_core::HyprState,
+        qh: &QueueHandle<AppState>,
+        force: bool,
+    ) {
+        let target = self.notification_target(state);
+        if !force && target == self.notification_output {
+            return;
+        }
+
+        self.notification_surfaces.clear();
+        self.notification_output = target.clone();
+        let Some(output_name) = target else {
+            return;
+        };
+        let Some(output) = self.app.outputs.get(&output_name) else {
+            return;
+        };
+        let wl_output = self.wl_outputs.get(&output_name).cloned();
+        let output_width = output.width;
+        let config = self.app.config.notifications.clone();
+        let notifications: Vec<Notification> = self
+            .notification_center
+            .visible(config.max_visible)
+            .cloned()
+            .collect();
+
+        for (index, notification) in notifications.into_iter().enumerate() {
+            let placement =
+                notification_placement(&config, output_width, index, NOTIFICATION_HEIGHT);
+            let surface = self.compositor_state.create_surface(qh);
+            let layer = self.layer_shell.create_layer_surface(
+                qh,
+                surface,
+                Layer::Overlay,
+                Some("hyprdeck-notification"),
+                wl_output.as_ref(),
+            );
+            let anchor = match placement.anchor {
+                hyprdeck_core::NotificationAnchor::TopLeft
+                | hyprdeck_core::NotificationAnchor::TopCenter => Anchor::TOP | Anchor::LEFT,
+                hyprdeck_core::NotificationAnchor::TopRight => Anchor::TOP | Anchor::RIGHT,
+                hyprdeck_core::NotificationAnchor::BottomLeft
+                | hyprdeck_core::NotificationAnchor::BottomCenter => Anchor::BOTTOM | Anchor::LEFT,
+                hyprdeck_core::NotificationAnchor::BottomRight => Anchor::BOTTOM | Anchor::RIGHT,
+            };
+            layer.set_anchor(anchor);
+            layer.set_size(config.width, NOTIFICATION_HEIGHT);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            layer.set_margin(
+                placement.top,
+                placement.right,
+                placement.bottom,
+                placement.left,
+            );
+            layer.commit();
+            let pool_size = (config.width as usize * NOTIFICATION_HEIGHT as usize * 4).max(4096);
+            let pool = match SlotPool::new(pool_size, &self.shm) {
+                Ok(pool) => pool,
+                Err(error) => {
+                    error!(?error, "failed to allocate notification shared memory");
+                    continue;
+                }
+            };
+            self.notification_surfaces.insert(
+                notification.id,
+                NotificationSurface {
+                    notification,
+                    output_name: output_name.clone(),
+                    layer_surface: layer,
+                    canvas: hyprdeck_core::Canvas::new(config.width, NOTIFICATION_HEIGHT),
+                    pool,
+                    width: config.width,
+                    height: NOTIFICATION_HEIGHT,
+                    configured: false,
+                },
+            );
+        }
+    }
+
+    fn render_notification_surface(&mut self, id: u32) {
+        let Some(output_name) = self
+            .notification_surfaces
+            .get(&id)
+            .map(|surface| surface.output_name.clone())
+        else {
+            return;
+        };
+        let Some(theme) = self
+            .app
+            .outputs
+            .get(&output_name)
+            .and_then(|output| output.panels.first())
+            .map(|panel| &panel.theme_ctx)
+        else {
+            return;
+        };
+        if let Some(surface) = self.notification_surfaces.get_mut(&id) {
+            surface.render(theme);
+        }
+    }
+
     /// Create a Wayland `Overlay`-layer surface for a panel's popup.
     ///
     /// Called after `Panel::handle_input` returns [`InputResult::OpenPopup`].
@@ -124,8 +446,21 @@ impl AppState {
                 return;
             };
             let size = content.desired_size(&panel.theme_ctx);
-            let w = (size.width.ceil() as u32).max(1);
-            let h = (size.height.ceil() as u32).max(1);
+            let (max_width, max_height) = match panel.edge {
+                Edge::Top | Edge::Bottom => (
+                    output.width.saturating_sub(8).max(1),
+                    output
+                        .height
+                        .saturating_sub(panel.surface_height + 8)
+                        .max(1),
+                ),
+                Edge::Left | Edge::Right => (
+                    output.width.saturating_sub(panel.surface_width + 8).max(1),
+                    output.height.saturating_sub(8).max(1),
+                ),
+            };
+            let w = (size.width.ceil() as u32).clamp(1, max_width);
+            let h = (size.height.ceil() as u32).clamp(1, max_height);
             (
                 w,
                 h,
@@ -337,11 +672,34 @@ impl AppState {
 
     /// Close every open popup across all outputs and panels.
     fn close_all_popups(&mut self) {
+        self.popup_close.clear();
         for output in self.app.outputs.values_mut() {
             for panel in &mut output.panels {
                 if panel.popup.active_module.is_some() {
                     panel.popup.close();
                 }
+            }
+        }
+    }
+
+    fn close_expired_popups(&mut self) {
+        for (output_name, panel_idx) in self.popup_close.take_expired(Instant::now()) {
+            let Some(panel) = self
+                .app
+                .outputs
+                .get_mut(&output_name)
+                .and_then(|output| output.panels.get_mut(panel_idx))
+            else {
+                continue;
+            };
+            let dragging = panel
+                .popup
+                .content
+                .as_ref()
+                .is_some_and(|content| content.is_dragging());
+            if !dragging {
+                debug!(%output_name, panel_idx, "closing popup after pointer-leave grace period");
+                panel.popup.close();
             }
         }
     }
@@ -371,14 +729,18 @@ impl AppState {
 
         let result = panel.popup.handle_event(&event, bounds);
 
-        if let Some(PopupEventResult::Action(action)) = result {
-            info!("Popup action: {:?}", action);
-            panel.popup.close();
-            tokio::spawn(async move {
-                if let Err(e) = dispatch_action(&action, &hypr_socket).await {
-                    warn!("Popup action dispatch failed: {}", e);
-                }
-            });
+        match result {
+            Some(PopupEventResult::Action(action)) => {
+                info!("Popup action: {:?}", action);
+                panel.popup.close();
+                tokio::spawn(async move {
+                    if let Err(e) = dispatch_action(&action, &hypr_socket).await {
+                        warn!("Popup action dispatch failed: {}", e);
+                    }
+                });
+            }
+            Some(PopupEventResult::Close) => panel.popup.close(),
+            Some(PopupEventResult::Handled | PopupEventResult::Ignored) | None => {}
         }
     }
 
@@ -468,6 +830,7 @@ impl AppState {
         let output = self.app.outputs.get_mut(name).unwrap();
         for ((idx, _, _, _), (layer, pool)) in panel_info.iter().zip(new_surfaces) {
             output.panels[*idx].layer_surface = Some(layer);
+            output.panels[*idx].surface_configured = false;
             output.panels[*idx].pool = Some(pool);
         }
     }
@@ -657,29 +1020,21 @@ impl PointerHandler for AppState {
     ) {
         for event in events {
             match &event.kind {
-                // ── Stage 1: trace every raw Wayland pointer event ────────
                 PointerEventKind::Enter { .. } => {
-                    info!(
-                        "POINTER Enter surface {:?} at ({:.1}, {:.1})",
-                        event.surface.id(),
-                        event.position.0,
-                        event.position.1
-                    );
                     if let Some((output_name, panel_idx)) =
                         self.find_panel_for_surface(&event.surface)
                     {
+                        self.popup_close.cancel(&output_name, panel_idx);
                         let output = self.app.outputs.get_mut(&output_name).unwrap();
                         output.panels[panel_idx].on_cursor_enter();
-                    } else {
-                        debug!(
-                            "POINTER Enter: surface {:?} not matched to any panel",
-                            event.surface.id()
-                        );
+                    } else if let Some((output_name, panel_idx)) =
+                        self.find_popup_owner(&event.surface)
+                    {
+                        self.popup_close.cancel(&output_name, panel_idx);
                     }
                 }
 
                 PointerEventKind::Leave { .. } => {
-                    info!("POINTER Leave surface {:?}", event.surface.id());
                     if let Some((output_name, panel_idx)) =
                         self.find_panel_for_surface(&event.surface)
                     {
@@ -688,7 +1043,8 @@ impl PointerHandler for AppState {
                     } else if let Some((output_name, panel_idx)) =
                         self.find_popup_owner(&event.surface)
                     {
-                        // Pointer left the popup surface — close unless a drag is active.
+                        // Do not close immediately: separate Wayland surfaces can
+                        // emit a brief leave while the pointer crosses their seam.
                         let is_dragging = self
                             .app
                             .outputs
@@ -698,21 +1054,13 @@ impl PointerHandler for AppState {
                             .map(|c| c.is_dragging())
                             .unwrap_or(false);
                         if !is_dragging {
-                            tracing::debug!("Pointer left popup surface, closing popup");
-                            if let Some(output) = self.app.outputs.get_mut(&output_name) {
-                                if let Some(panel) = output.panels.get_mut(panel_idx) {
-                                    panel.popup.close();
-                                }
-                            }
+                            self.popup_close
+                                .schedule(&output_name, panel_idx, Instant::now());
                         }
                     }
                 }
 
                 PointerEventKind::Motion { .. } => {
-                    trace!(
-                        "POINTER Motion ({:.1}, {:.1})",
-                        event.position.0, event.position.1
-                    );
                     if let Some((output_name, panel_idx)) =
                         self.find_panel_for_surface(&event.surface)
                     {
@@ -725,6 +1073,7 @@ impl PointerHandler for AppState {
                     } else if let Some((output_name, panel_idx)) =
                         self.find_popup_owner(&event.surface)
                     {
+                        self.popup_close.cancel(&output_name, panel_idx);
                         let input = InputEvent::MouseMove {
                             x: event.position.0 as f32,
                             y: event.position.1 as f32,
@@ -734,10 +1083,6 @@ impl PointerHandler for AppState {
                 }
 
                 PointerEventKind::Press { button, .. } => {
-                    info!(
-                        "POINTER Press button={:#x} at ({:.1}, {:.1})",
-                        button, event.position.0, event.position.1
-                    );
                     let mb = match *button {
                         BTN_LEFT => Some(MouseButton::Left),
                         BTN_RIGHT => Some(MouseButton::Right),
@@ -786,10 +1131,6 @@ impl PointerHandler for AppState {
                 }
 
                 PointerEventKind::Release { button, .. } => {
-                    info!(
-                        "POINTER Release button={:#x} at ({:.1}, {:.1})",
-                        button, event.position.0, event.position.1
-                    );
                     let mb = match *button {
                         BTN_LEFT => Some(MouseButton::Left),
                         BTN_RIGHT => Some(MouseButton::Right),
@@ -820,8 +1161,42 @@ impl PointerHandler for AppState {
                     }
                 }
 
-                PointerEventKind::Axis { .. } => {
-                    debug!("POINTER Scroll");
+                PointerEventKind::Axis {
+                    horizontal,
+                    vertical,
+                    ..
+                } => {
+                    // SCTK already aggregates all axis protocol events in this
+                    // pointer frame.  Prefer pixel deltas for touchpads, then
+                    // high-resolution wheel units, then legacy discrete steps.
+                    let axis_delta = |axis: &smithay_client_toolkit::seat::pointer::AxisScroll| {
+                        if axis.absolute != 0.0 {
+                            axis.absolute as f32
+                        } else if axis.value120 != 0 {
+                            axis.value120 as f32 / 120.0
+                        } else {
+                            axis.discrete as f32
+                        }
+                    };
+                    let dx = axis_delta(horizontal);
+                    let dy = axis_delta(vertical);
+                    if dx == 0.0 && dy == 0.0 {
+                        continue;
+                    }
+                    let input = InputEvent::Scroll { dx, dy };
+                    if let Some((output_name, panel_idx)) =
+                        self.find_panel_for_surface(&event.surface)
+                    {
+                        let result = {
+                            let output = self.app.outputs.get_mut(&output_name).unwrap();
+                            output.panels[panel_idx].handle_input(input)
+                        };
+                        self.handle_input_result(result, &output_name, panel_idx, qh);
+                    } else if let Some((output_name, panel_idx)) =
+                        self.find_popup_owner(&event.surface)
+                    {
+                        self.dispatch_popup_event(&output_name, panel_idx, input);
+                    }
                 }
             }
         }
@@ -923,6 +1298,13 @@ impl LayerShellHandler for AppState {
         let surface_id = layer.wl_surface().id();
         info!("Layer surface closed ({:?})", surface_id);
 
+        if let Some(id) = self.notification_surfaces.iter().find_map(|(id, surface)| {
+            (surface.layer_surface.wl_surface().id() == surface_id).then_some(*id)
+        }) {
+            self.notification_surfaces.remove(&id);
+            return;
+        }
+
         for output in self.app.outputs.values_mut() {
             // Check whether this is a panel surface being closed.
             let was_panel = output.panels.iter().any(|p| {
@@ -973,6 +1355,29 @@ impl LayerShellHandler for AppState {
             surface_id, configure.new_size
         );
 
+        if let Some(id) = self.notification_surfaces.iter().find_map(|(id, surface)| {
+            (surface.layer_surface.wl_surface().id() == surface_id).then_some(*id)
+        }) {
+            let (width, height) = configure.new_size;
+            if let Some(surface) = self.notification_surfaces.get_mut(&id) {
+                if width != 0 && height != 0 && (width != surface.width || height != surface.height)
+                {
+                    surface.width = width;
+                    surface.height = height;
+                    surface.canvas.resize(width, height);
+                    let needed = (width as usize * height as usize * 4).max(4096);
+                    if needed > surface.pool.len()
+                        && let Err(error) = surface.pool.resize(needed)
+                    {
+                        error!(?error, "failed to resize notification shared memory");
+                    }
+                }
+                surface.configured = true;
+            }
+            self.render_notification_surface(id);
+            return;
+        }
+
         // Search for either a panel surface or a popup surface matching this id.
         let mut panel_target: Option<(String, usize)> = None;
         let mut popup_target: Option<(String, usize)> = None;
@@ -1000,9 +1405,6 @@ impl LayerShellHandler for AppState {
                 "Popup configure {}x{} for panel {} on '{}'",
                 w, h, panel_idx, output_name
             );
-            // SCTK sends ack_configure automatically before invoking this callback.
-            debug!("Popup configure ack'd");
-
             let output = self.app.outputs.get_mut(&output_name).unwrap();
             let panel = &mut output.panels[panel_idx];
 
@@ -1030,21 +1432,6 @@ impl LayerShellHandler for AppState {
 
             panel.popup.configured = true;
             panel.popup.dirty = true;
-            debug!("Popup marked configured=true, dirty=true");
-            debug!("Popup has content: {}", panel.popup.content.is_some());
-            debug!("Popup has canvas: {}", panel.popup.canvas.is_some());
-            debug!(
-                "Popup has layer_surface: {}",
-                panel.popup.layer_surface.is_some()
-            );
-            debug!(
-                "render_popup called for panel {} on '{}'",
-                panel_idx, output_name
-            );
-            debug!(
-                "  configured={}, dirty={}",
-                panel.popup.configured, panel.popup.dirty
-            );
             // Borrow panel.theme_ctx and panel.popup separately (different fields).
             panel.popup.frame(&panel.theme_ctx);
             return;
@@ -1085,6 +1472,7 @@ impl LayerShellHandler for AppState {
         }
 
         panel.dirty = true;
+        panel.surface_configured = true;
         debug!("Rendering panel on configure");
         panel.frame(&display);
     }
@@ -1117,7 +1505,15 @@ delegate_registry!(AppState);
 
 #[derive(Parser)]
 #[command(name = "hyprdeck", version)]
-struct Cli {}
+struct Cli {
+    /// Print the versioned built-in module configuration schema as JSON and exit.
+    #[arg(long)]
+    print_config_schema: bool,
+
+    /// Validate a HyprDeck TOML file, print JSON diagnostics, and exit.
+    #[arg(long, value_name = "PATH")]
+    validate_config: Option<std::path::PathBuf>,
+}
 
 // ── Wayland fd helper ─────────────────────────────────────────────────────────
 
@@ -1134,12 +1530,59 @@ impl std::os::unix::io::AsRawFd for WaylandFdRef {
     }
 }
 
+fn editor_config_schema() -> Result<hyprdeck_core::ConfigSchema, hyprdeck_themes::ThemeLoadError> {
+    let themes = hyprdeck_themes::embedded_theme_names()
+        .into_iter()
+        .map(|id| {
+            let theme = hyprdeck_themes::load_theme(id)?;
+            let mut modules = Vec::new();
+            for module in theme.panels.iter().flat_map(|panel| {
+                panel
+                    .modules_start
+                    .iter()
+                    .chain(&panel.modules_center)
+                    .chain(&panel.modules_end)
+            }) {
+                if !modules.contains(module) {
+                    modules.push(module.clone());
+                }
+            }
+            Ok(hyprdeck_core::ThemeMetadata {
+                id: id.to_owned(),
+                name: theme.name,
+                description: theme.description,
+                modules,
+            })
+        })
+        .collect::<Result<Vec<_>, hyprdeck_themes::ThemeLoadError>>()?;
+    Ok(hyprdeck_modules::builtin_config_schema().with_themes(themes))
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── 0. Parse CLI (handles --version / -V and exits early) ────────────────
-    let _cli = Cli::parse();
+    let cli = Cli::parse();
+    if cli.print_config_schema {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&editor_config_schema()?)?
+        );
+        return Ok(());
+    }
+    if let Some(path) = cli.validate_config {
+        let config = hyprdeck_core::Config::load(&path)?;
+        let diagnostics = config.validate_with_schema(&editor_config_schema()?);
+        println!("{}", serde_json::to_string_pretty(&diagnostics)?);
+        if diagnostics
+            .iter()
+            .any(hyprdeck_core::ConfigDiagnostic::is_error)
+        {
+            return Err(hyprdeck_core::ConfigError::Validation(diagnostics).into());
+        }
+        return Ok(());
+    }
 
     // ── 1. Initialize logging ─────────────────────────────
     tracing_subscriber::fmt()
@@ -1152,11 +1595,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("HyprDeck starting");
 
+    let instance_control = match InstanceControl::claim_default().await? {
+        InstanceClaim::Primary(control) => control,
+        InstanceClaim::RefreshedExisting => {
+            info!("existing HyprDeck instance refreshed; exiting duplicate");
+            return Ok(());
+        }
+    };
+
     // ── 2. Load config ────────────────────────────────────
     let config_path = hyprdeck_core::default_config_path()?;
     info!("Loading config from {:?}", config_path);
     let config = hyprdeck_core::Config::load(&config_path)?;
     info!("Theme: {}", config.theme);
+
+    // The service is opt-in so HyprDeck never unexpectedly races an existing
+    // notification daemon for the well-known D-Bus name.
+    let (notification_tx, mut notification_rx) = mpsc::unbounded_channel();
+    let _notification_dbus = if config.notifications.enabled {
+        match notifications::start_notification_service(notification_tx).await {
+            Ok(connection) => {
+                info!("Serving org.freedesktop.Notifications");
+                Some(connection)
+            }
+            Err(error) => {
+                warn!(
+                    ?error,
+                    "could not claim org.freedesktop.Notifications; notifications disabled"
+                );
+                None
+            }
+        }
+    } else {
+        info!("Desktop notification daemon disabled by configuration");
+        None
+    };
+    let notification_service_active = _notification_dbus.is_some();
 
     // ── 3. Resolve theme ──────────────────────────────────
     let theme_def = hyprdeck_themes::load_theme(&config.theme)?;
@@ -1204,6 +1678,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         keyboard_focus_surface: None,
         modifiers: 0,
         hypr_socket,
+        notification_center: NotificationCenter::default(),
+        notification_surfaces: HashMap::new(),
+        notification_output: None,
+        popup_close: PopupCloseTracker::default(),
     };
 
     // Initial roundtrip: enumerates Wayland outputs (populates wl_outputs).
@@ -1212,12 +1690,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── 7. Add outputs and create Wayland surfaces ────────
     {
         let state = hypr_state.read().await;
-        for monitor in &state.monitors {
-            app_state
-                .app
-                .add_output(monitor.name.clone(), monitor.width, monitor.height);
-            app_state.create_surfaces_for_output(&monitor.name, &qh);
-        }
+        app_state.reconcile_output_topology(&state, &qh);
     }
     debug!("Flushed Wayland connection");
     event_queue.flush()?;
@@ -1264,6 +1737,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut frame_interval = tokio::time::interval(Duration::from_millis(16));
     frame_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let mut popup_close_interval = tokio::time::interval(Duration::from_millis(50));
+    popup_close_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     let mut last_frame_time = tokio::time::Instant::now();
     let mut animating = app_state.app.is_animating();
 
@@ -1279,6 +1755,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             _ = sigint.recv() => {
                 info!("Received SIGINT, shutting down");
                 app_state.app.shutdown = true;
+            }
+
+            refresh = instance_control.receive_refresh() => {
+                match refresh {
+                    Ok(true) => {
+                        let state = hypr_state.read().await;
+                        if let Err(error) = app_state.reload_bar(&config_path, &state, &qh) {
+                            warn!(?error, "could not refresh HyprDeck configuration");
+                        }
+                    }
+                    Ok(false) => warn!("ignored unknown HyprDeck control command"),
+                    Err(error) => warn!(?error, "HyprDeck control socket failed"),
+                }
+            }
+
+            command = notification_rx.recv(), if notification_service_active => {
+                if let Some(command) = command {
+                    if app_state.process_notification(command) {
+                        let state = hypr_state.read().await;
+                        app_state.sync_notification_surfaces(&state, &qh, true);
+                    }
+                }
             }
 
             // Wayland compositor events
@@ -1302,27 +1800,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     Ok(ev) => {
                         trace!("Hyprland event: {:?}", ev);
 
-                        // Handle monitor hotplug.
-                        match &ev {
-                            hyprdeck_core::HyprEvent::MonitorAdded { name, .. } => {
-                                let state = hypr_state.read().await;
-                                if let Some(mon) = state.monitors.iter().find(|m| &m.name == name) {
-                                    app_state.app.add_output(
-                                        mon.name.clone(),
-                                        mon.width,
-                                        mon.height,
-                                    );
-                                    app_state.create_surfaces_for_output(&mon.name, &qh);
-                                    // Flush so the compositor receives the new surfaces.
-                                    event_queue.flush()?;
-                                }
-                            }
-                            hyprdeck_core::HyprEvent::MonitorRemoved { name } => {
-                                app_state.app.remove_output(name);
-                            }
-                            _ => {}
-                        }
-
                         // HyprState was already updated by the socket reader task
                         // (state update happens before broadcast). Run an immediate
                         // module tick so panels reflect the change without waiting
@@ -1330,7 +1807,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         {
                             let now = chrono::Local::now();
                             let state = hypr_state.read().await;
+                            let topology_changed =
+                                app_state.reconcile_output_topology(&state, &qh);
                             app_state.app.tick_modules(now, &state);
+                            app_state.sync_notification_surfaces(
+                                &state,
+                                &qh,
+                                topology_changed,
+                            );
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -1354,7 +1838,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             _ = tick_interval.tick() => {
                 let now = chrono::Local::now();
                 let state = hypr_state.read().await;
+                let topology_changed = app_state.reconcile_output_topology(&state, &qh);
                 app_state.app.tick_modules(now, &state);
+                if app_state.expire_notifications() || topology_changed {
+                    app_state.sync_notification_surfaces(&state, &qh, true);
+                } else {
+                    app_state.sync_notification_surfaces(&state, &qh, false);
+                }
+            }
+
+            _ = popup_close_interval.tick() => {
+                app_state.close_expired_popups();
             }
 
             // Animation frame (16 ms, only while animating)
@@ -1433,5 +1927,31 @@ mod tests {
             ..Modifiers::default()
         };
         assert_eq!(pack_modifiers(&m), 0);
+    }
+
+    #[test]
+    fn popup_close_grace_can_be_cancelled_by_reentry() {
+        let start = Instant::now();
+        let mut tracker = PopupCloseTracker::default();
+        tracker.schedule("DP-1", 2, start);
+        assert!(
+            tracker
+                .take_expired(start + POPUP_LEAVE_GRACE - Duration::from_millis(1))
+                .is_empty()
+        );
+
+        tracker.cancel("DP-1", 2);
+        assert!(tracker.take_expired(start + POPUP_LEAVE_GRACE).is_empty());
+    }
+
+    #[test]
+    fn popup_close_grace_expires_for_pointer_exit() {
+        let start = Instant::now();
+        let mut tracker = PopupCloseTracker::default();
+        tracker.schedule("DP-1", 2, start);
+        assert_eq!(
+            tracker.take_expired(start + POPUP_LEAVE_GRACE),
+            vec![("DP-1".to_owned(), 2)]
+        );
     }
 }

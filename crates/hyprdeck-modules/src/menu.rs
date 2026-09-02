@@ -29,17 +29,17 @@ pub struct MenuConfig {
 }
 
 fn default_label() -> String {
-    String::new()
+    ">>".to_owned()
 }
 
 fn default_icon() -> String {
-    "start-here".to_owned()
+    String::new()
 }
 
 fn default_action() -> Action {
-    Action::Exec {
-        command: "wofi".to_owned(),
-        args: vec!["--show".to_owned(), "drun".to_owned()],
+    Action::HyprlandExec {
+        variable: "menu".to_owned(),
+        fallback: Some("wofi --show drun".to_owned()),
     }
 }
 
@@ -88,6 +88,10 @@ impl MenuModule {
             pressed: false,
         }
     }
+
+    fn shows_icon(&self) -> bool {
+        !self.config.icon.is_empty()
+    }
 }
 
 impl PanelModule for MenuModule {
@@ -98,7 +102,7 @@ impl PanelModule for MenuModule {
     fn desired_size(&self, theme: &ThemeContext) -> Size {
         let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
         let font_size = render_utils::effective_font_size(h, theme.fonts.size);
-        let icon_w = if self.icon_image.is_some() {
+        let icon_w = if self.shows_icon() {
             font_size + 4.0
         } else {
             0.0
@@ -142,9 +146,13 @@ impl PanelModule for MenuModule {
         let y = bounds.y + (bounds.height - content_h) / 2.0;
 
         // Draw icon.
-        if let Some(icon) = &self.icon_image {
+        if self.shows_icon() {
             let icon_rect = Rect::new(x, y, content_h, content_h);
-            render_utils::draw_image(canvas, icon, icon_rect, 1.0);
+            if let Some(icon) = &self.icon_image {
+                render_utils::draw_image(canvas, icon, icon_rect, 1.0);
+            } else {
+                render_utils::draw_menu_icon(canvas, icon_rect, theme.colors.foreground);
+            }
             x += content_h + 4.0;
         }
 
@@ -188,10 +196,10 @@ impl PanelModule for MenuModule {
                 ..
             } => {
                 self.pressed = false;
-                if self.hovered {
-                    return EventResult::Action(self.config.action.clone());
-                }
-                EventResult::Handled
+                // The panel only routes this release while the pointer is
+                // inside our bounds, so action dispatch must not depend on a
+                // preceding motion event having established hover state.
+                EventResult::Action(self.config.action.clone())
             }
             _ => EventResult::Ignored,
         }
@@ -206,14 +214,16 @@ impl PanelModule for MenuModule {
                     label: "Button label".to_owned(),
                     description:
                         "Text shown on the menu button. Empty string for icon-only mode.".to_owned(),
-                    field_type: ConfigFieldType::Text { default: String::new() },
+                    field_type: ConfigFieldType::Text {
+                        default: default_label(),
+                    },
                 },
                 ConfigField {
                     key: "icon".to_owned(),
                     label: "Icon name".to_owned(),
                     description:
                         "XDG icon name for the button (e.g. \"start-here\", \"distributor-logo-arch\").".to_owned(),
-                    field_type: ConfigFieldType::Text { default: "start-here".to_owned() },
+                    field_type: ConfigFieldType::Text { default: String::new() },
                 },
             ],
         }
@@ -242,6 +252,17 @@ mod tests {
     }
 
     #[test]
+    fn default_action_uses_hyprland_menu_variable() {
+        assert!(matches!(
+            MenuConfig::default().action,
+            Action::HyprlandExec {
+                variable,
+                fallback: Some(_)
+            } if variable == "menu"
+        ));
+    }
+
+    #[test]
     fn click_returns_configured_action() {
         let action = Action::Exec {
             command: "rofi".to_owned(),
@@ -251,7 +272,6 @@ mod tests {
             action: action.clone(),
             ..MenuConfig::default()
         });
-        m.hovered = true;
         let bounds = Rect::new(0.0, 0.0, 48.0, 32.0);
         // Press then release.
         m.handle_event(
@@ -291,5 +311,39 @@ mod tests {
             ..MenuConfig::default()
         });
         assert!(m.icon_image.is_none());
+        assert!(m.shows_icon());
+    }
+
+    #[test]
+    fn missing_theme_icon_renders_visible_fallback() {
+        let m = MenuModule::new(MenuConfig {
+            icon: "__no_such_icon__".to_owned(),
+            ..MenuConfig::default()
+        });
+        let theme = ThemeContext {
+            colors: hyprdeck_core::ColorPalette {
+                background: [30, 30, 30, 255],
+                foreground: [255, 255, 255, 255],
+                accent: [80, 160, 255, 255],
+                urgent: [255, 80, 80, 255],
+                separator: [128, 128, 128, 128],
+            },
+            fonts: hyprdeck_core::FontConfig {
+                family: "sans-serif".to_owned(),
+                size: 13.0,
+                bold_family: None,
+                mono_family: None,
+            },
+            padding: hyprdeck_core::Padding::default(),
+            border_radius: 0.0,
+            opacity: 1.0,
+            icon_slot_size: 24.0,
+            icon_padding: 2.0,
+            verbose_text_padding: 4.0,
+            module_styles: hyprdeck_core::ResolvedModuleStyles::default(),
+        };
+        let mut canvas = Pixmap::new(48, 32).unwrap();
+        m.render(&mut canvas, &theme, Rect::new(0.0, 0.0, 48.0, 32.0));
+        assert!(canvas.data().chunks_exact(4).any(|pixel| pixel[3] > 0));
     }
 }

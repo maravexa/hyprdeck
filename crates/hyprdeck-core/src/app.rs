@@ -49,6 +49,14 @@ impl App {
         }
     }
 
+    /// Replace the runtime configuration and theme, dropping every current
+    /// output so the binary can recreate its Wayland surfaces in place.
+    pub fn reload(&mut self, config: Config, theme: ThemeDefinition) {
+        self.outputs.clear();
+        self.config = config;
+        self.theme = theme;
+    }
+
     /// Called when a new Wayland output (monitor) is discovered.
     ///
     /// Creates panels for this output based on the theme definition, instantiates
@@ -253,6 +261,13 @@ pub fn resolve_module_styles_for_panel(
     default_wl_inactive_bg[3] = 10;
     let mut default_ws_inactive_bg = base_colors.foreground;
     default_ws_inactive_bg[3] = 80;
+    let muted = |color: [u8; 4], neutral: u8, alpha: u8| -> [u8; 4] {
+        let mix = |channel: u8| ((u16::from(channel) + u16::from(neutral)) / 2) as u8;
+        [mix(color[0]), mix(color[1]), mix(color[2]), alpha]
+    };
+    let default_ws_remote_bg = muted(base_colors.foreground, 96, 80);
+    let default_ws_remote_fg = muted(base_colors.foreground, 160, 190);
+    let default_ws_remote_urgent_bg = muted(base_colors.urgent, 112, 190);
 
     ResolvedModuleStyles {
         window_list: ResolvedWindowListStyle {
@@ -289,6 +304,22 @@ pub fn resolve_module_styles_for_panel(
             inactive_foreground: parse(
                 ws.and_then(|s| s.inactive_foreground.as_deref()),
                 base_colors.foreground,
+            ),
+            remote_background: parse(
+                ws.and_then(|s| s.remote_background.as_deref()),
+                default_ws_remote_bg,
+            ),
+            remote_foreground: parse(
+                ws.and_then(|s| s.remote_foreground.as_deref()),
+                default_ws_remote_fg,
+            ),
+            remote_urgent_background: parse(
+                ws.and_then(|s| s.remote_urgent_background.as_deref()),
+                default_ws_remote_urgent_bg,
+            ),
+            remote_urgent_foreground: parse(
+                ws.and_then(|s| s.remote_urgent_foreground.as_deref()),
+                default_ws_remote_fg,
             ),
         },
     }
@@ -352,6 +383,11 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
 
     let verbose_text_padding = style_def.and_then(|s| s.verbose_text_padding);
 
+    let icon_padding = style_def
+        .and_then(|s| s.icon_padding)
+        .unwrap_or(2.0)
+        .max(0.0);
+
     let opacity = config
         .theme_overrides
         .bar_opacity
@@ -387,6 +423,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
         },
         border_radius,
         background_opacity: opacity,
+        icon_padding,
         separator: ResolvedSeparator {
             color: separator_color,
             ..ResolvedSeparator::default()
@@ -401,7 +438,7 @@ pub fn resolve_style_from_theme(theme: &ThemeDefinition, config: &Config) -> Res
 mod tests {
     use super::*;
     use crate::autohide::AutoHideMode;
-    use crate::config::{ModuleConfigs, ThemeOverrides};
+    use crate::config::{ModuleConfigs, NotificationConfig, ThemeOverrides};
     use crate::theme::StyleDefinition;
 
     /// Stub module factory that creates nothing (for testing App without modules).
@@ -414,6 +451,8 @@ mod tests {
             theme: "test".into(),
             theme_overrides: ThemeOverrides::default(),
             modules: ModuleConfigs::default(),
+            notifications: NotificationConfig::default(),
+            extra: Default::default(),
         }
     }
 
@@ -465,6 +504,26 @@ mod tests {
     }
 
     #[test]
+    fn reload_replaces_configuration_and_drops_existing_outputs() {
+        let mut app = App::new(test_config(), test_theme(), null_factory);
+        app.add_output("DP-1".into(), 1920, 1080);
+        let mut config = test_config();
+        config.theme = "replacement".into();
+        let theme = ThemeDefinition {
+            name: "Replacement".into(),
+            description: String::new(),
+            panels: vec![],
+            style: None,
+        };
+
+        app.reload(config, theme);
+
+        assert!(app.outputs.is_empty());
+        assert_eq!(app.config.theme, "replacement");
+        assert_eq!(app.theme.name, "Replacement");
+    }
+
+    #[test]
     fn handle_hypr_event_propagates_to_panels() {
         let mut app = App::new(test_config(), test_theme(), null_factory);
         app.add_output("DP-1".into(), 1920, 1080);
@@ -476,7 +535,9 @@ mod tests {
             }
         }
 
-        let event = crate::ipc::event::HyprEvent::WorkspaceChanged { id: 2 };
+        let event = crate::ipc::event::HyprEvent::WorkspaceChanged {
+            workspace: crate::ipc::event::WorkspaceRef::Id(2),
+        };
         let dirty = app.handle_hypr_event(&event);
         assert!(dirty);
     }
@@ -502,6 +563,7 @@ mod tests {
         assert_eq!(style.colors.background, [30, 30, 30, 230]);
         assert_eq!(style.fonts.family, "sans-serif");
         assert_eq!(style.fonts.size, 13.0);
+        assert_eq!(style.icon_padding, 2.0);
     }
 
     #[test]
@@ -526,6 +588,24 @@ mod tests {
     }
 
     #[test]
+    fn resolve_style_applies_icon_padding() {
+        let theme = ThemeDefinition {
+            name: "icon-padding".into(),
+            description: "".into(),
+            panels: vec![],
+            style: Some(StyleDefinition {
+                icon_padding: Some(5.0),
+                ..StyleDefinition::default()
+            }),
+        };
+
+        assert_eq!(
+            resolve_style_from_theme(&theme, &test_config()).icon_padding,
+            5.0
+        );
+    }
+
+    #[test]
     fn resolve_style_user_overrides_take_precedence() {
         let theme = ThemeDefinition {
             name: "styled".into(),
@@ -545,6 +625,8 @@ mod tests {
                 ..ThemeOverrides::default()
             },
             modules: ModuleConfigs::default(),
+            notifications: NotificationConfig::default(),
+            extra: Default::default(),
         };
         let style = resolve_style_from_theme(&theme, &config);
 

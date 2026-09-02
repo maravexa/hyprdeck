@@ -6,6 +6,7 @@ pub mod geometry;
 pub mod ipc;
 pub mod layout;
 pub mod module;
+pub mod notification;
 pub mod output;
 pub mod panel;
 pub mod popup;
@@ -21,11 +22,15 @@ pub use tiny_skia::Pixmap;
 pub use action::{Action, ActionError, dispatch_action};
 pub use app::{App, ModuleFactory};
 pub use autohide::{AnimPhase, AutoHideMode, AutoHideState};
-pub use config::{Config, ConfigPathError, ModuleConfigs, ThemeOverrides, default_config_path};
+pub use config::{
+    CONFIG_CONTRACT_VERSION, Config, ConfigDiagnostic, ConfigError, ConfigPathError, ConfigSchema,
+    DiagnosticSeverity, ModuleConfigs, NotificationAnchor, NotificationConfig, ThemeMetadata,
+    ThemeOverrides, default_config_path,
+};
 pub use geometry::{DisplayGeometry, Edge, Point, Rect, Size};
 pub use ipc::{
     CommandClient, EventSocket, HyprEvent, HyprIpc, HyprState, IpcError, MonitorInfo, WindowInfo,
-    Workspace,
+    Workspace, WorkspaceRef,
 };
 pub use layout::{
     Axis, DockAnimState, DockLayout, DockLayoutConfig, HorizontalLayout, LayoutEngine,
@@ -34,6 +39,10 @@ pub use layout::{
 pub use module::{
     ConfigField, ConfigFieldType, DisplayMode, EventResult, InputEvent, ModuleConfigSchema,
     MouseButton, PanelModule, ThemeContext, UpdateContext, keymod,
+};
+pub use notification::{
+    NOTIFICATION_HEIGHT, Notification, NotificationAction, NotificationCenter, NotificationChange,
+    NotificationPlacement, NotificationRequest, notification_placement, render_notification,
 };
 pub use output::OutputState;
 pub use panel::{

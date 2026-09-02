@@ -8,7 +8,8 @@ use serde::Deserialize;
 
 use hyprdeck_core::{
     Action, ConfigField, ConfigFieldType, EventResult, InputEvent, ModuleConfigSchema, MouseButton,
-    PanelModule, Pixmap, Rect, Size, ThemeContext, UpdateContext, Workspace,
+    PanelModule, Pixmap, Rect, ResolvedWorkspacesStyle, Size, ThemeContext, UpdateContext,
+    Workspace,
 };
 
 use crate::render_utils;
@@ -33,6 +34,34 @@ fn default_true() -> bool {
     true
 }
 
+fn workspace_colors(
+    workspace: &Workspace,
+    output_name: &str,
+    active_id: i32,
+    highlight_urgent: bool,
+    style: &ResolvedWorkspacesStyle,
+    urgent_color: [u8; 4],
+) -> ([u8; 4], [u8; 4]) {
+    let is_remote = !workspace.monitor.is_empty() && workspace.monitor != output_name;
+    let is_active = !is_remote && workspace.id == active_id;
+    let is_urgent = highlight_urgent && workspace.has_urgent;
+
+    if is_remote && is_urgent {
+        (
+            style.remote_urgent_background,
+            style.remote_urgent_foreground,
+        )
+    } else if is_remote {
+        (style.remote_background, style.remote_foreground)
+    } else if is_active {
+        (style.active_background, style.active_foreground)
+    } else if is_urgent {
+        (urgent_color, style.inactive_foreground)
+    } else {
+        (style.inactive_background, style.inactive_foreground)
+    }
+}
+
 // ── Module ────────────────────────────────────────────────────────────────────
 
 /// Runtime state for the workspace switcher.
@@ -41,6 +70,9 @@ pub struct WorkspacesModule {
     /// Snapshot of workspaces from the last `update()` call.
     workspaces: Vec<Workspace>,
     active_id: i32,
+    /// Output whose panel owns this module. Needed at render time to make
+    /// remote workspaces visibly distinct from local ones.
+    output_name: String,
 }
 
 impl WorkspacesModule {
@@ -49,6 +81,7 @@ impl WorkspacesModule {
             config,
             workspaces: Vec::new(),
             active_id: 1,
+            output_name: String::new(),
         }
     }
 
@@ -122,10 +155,13 @@ impl PanelModule for WorkspacesModule {
             ws
         };
 
-        let changed = new_ws != self.workspaces || new_active != self.active_id;
+        let changed = new_ws != self.workspaces
+            || new_active != self.active_id
+            || self.output_name != ctx.output_name;
         if changed {
             self.workspaces = new_ws;
             self.active_id = new_active;
+            self.output_name = ctx.output_name.to_owned();
         }
         changed
     }
@@ -143,18 +179,18 @@ impl PanelModule for WorkspacesModule {
             let sx = bounds.x + bounds.width - remaining * slot - (remaining - 1.0) * gap;
             let slot_rect = Rect::new(sx, bounds.y, slot, slot);
 
-            let is_active = ws.id == self.active_id;
-            let is_urgent = self.config.highlight_urgent && ws.has_urgent;
-
-            // Use per-module theme colors; urgent stays as-is from the base palette.
+            // Remote urgency is intentionally muted: two monitor panels still
+            // show attention, but only the owning monitor receives the bright
+            // red signal.
             let ws_style = &theme.module_styles.workspaces;
-            let bg = if is_active {
-                ws_style.active_background
-            } else if is_urgent {
-                theme.colors.urgent
-            } else {
-                ws_style.inactive_background
-            };
+            let (bg, text_color) = workspace_colors(
+                ws,
+                &self.output_name,
+                self.active_id,
+                self.config.highlight_urgent,
+                ws_style,
+                theme.colors.urgent,
+            );
 
             render_utils::fill_rounded_rect(canvas, slot_rect, bg, radius);
 
@@ -163,11 +199,6 @@ impl PanelModule for WorkspacesModule {
                 ws.name.as_str().to_owned()
             } else {
                 ws.id.to_string()
-            };
-            let text_color = if is_active {
-                ws_style.active_foreground
-            } else {
-                ws_style.inactive_foreground
             };
             let font_family = theme
                 .fonts
@@ -242,7 +273,7 @@ impl PanelModule for WorkspacesModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hyprdeck_core::{HyprState, WindowInfo};
+    use hyprdeck_core::{HyprState, ResolvedModuleStyles, WindowInfo};
 
     fn state_with(workspaces: Vec<Workspace>, active: i32) -> HyprState {
         HyprState {
@@ -309,6 +340,29 @@ mod tests {
     }
 
     #[test]
+    fn remote_workspaces_use_muted_styles_and_keep_local_urgency_bright() {
+        let styles = ResolvedModuleStyles::default().workspaces;
+        let remote_urgent = Workspace {
+            id: 2,
+            name: "2".into(),
+            monitor: "DP-2".into(),
+            has_urgent: true,
+        };
+        let (remote_background, remote_foreground) =
+            workspace_colors(&remote_urgent, "DP-1", 1, true, &styles, [255, 0, 0, 255]);
+        assert_eq!(remote_background, styles.remote_urgent_background);
+        assert_eq!(remote_foreground, styles.remote_urgent_foreground);
+
+        let local_urgent = Workspace {
+            monitor: "DP-1".into(),
+            ..remote_urgent
+        };
+        let (local_background, _) =
+            workspace_colors(&local_urgent, "DP-1", 1, true, &styles, [255, 0, 0, 255]);
+        assert_eq!(local_background, [255, 0, 0, 255]);
+    }
+
+    #[test]
     fn hide_empty_keeps_active_workspace() {
         let mut m = WorkspacesModule::new(WorkspacesConfig {
             hide_empty: true,
@@ -337,6 +391,7 @@ mod tests {
             workspace_id: 2,
             is_focused: false,
             is_fullscreen: false,
+            is_urgent: false,
         }];
         let ctx = UpdateContext {
             now: chrono::Local::now(),

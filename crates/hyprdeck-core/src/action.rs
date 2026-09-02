@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,12 @@ pub enum Action {
     },
     /// Send a `hyprctl dispatch` command to Hyprland.
     HyprDispatch { dispatch: String },
+    /// Execute the command stored in a Hyprland `$variable`.
+    HyprlandExec {
+        variable: String,
+        #[serde(default)]
+        fallback: Option<String>,
+    },
     /// Forward a named action to a specific module.
     ModuleAction { module: String, action: String },
     /// Execute multiple actions sequentially.
@@ -36,6 +42,9 @@ pub enum ActionError {
     /// A Hyprland dispatch command failed.
     #[error("hyprland dispatch '{dispatch}' failed: {detail}")]
     HyprDispatchFailed { dispatch: String, detail: String },
+    /// A requested Hyprland command variable was unavailable.
+    #[error("Hyprland variable '${variable}' is not defined and has no fallback")]
+    HyprlandVariableMissing { variable: String },
 }
 
 /// Execute an action. Called by the main loop when a module returns an [`Action`].
@@ -43,27 +52,7 @@ pub async fn dispatch_action(action: &Action, hypr_socket: &Path) -> Result<(), 
     match action {
         Action::Exec { command: cmd, args } => {
             tracing::info!("Executing: {} {:?}", cmd, args);
-            let result = tokio::process::Command::new(cmd)
-                .args(args)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-
-            match result {
-                Ok(_child) => {
-                    // Detach — we don't wait for the child.
-                    // tokio::process sets up SIGCHLD handling automatically.
-                    Ok(())
-                }
-                Err(e) => {
-                    tracing::error!("Failed to spawn '{}': {}", cmd, e);
-                    Err(ActionError::SpawnFailed {
-                        command: cmd.clone(),
-                        source: e,
-                    })
-                }
-            }
+            spawn_detached(cmd, args)
         }
 
         Action::HyprDispatch { dispatch } => {
@@ -75,6 +64,16 @@ pub async fn dispatch_action(action: &Action, hypr_socket: &Path) -> Result<(), 
                     detail: e.to_string(),
                 }
             })
+        }
+
+        Action::HyprlandExec { variable, fallback } => {
+            let command = resolve_hyprland_variable(variable)
+                .or_else(|| fallback.clone())
+                .ok_or_else(|| ActionError::HyprlandVariableMissing {
+                    variable: variable.trim_start_matches('$').to_owned(),
+                })?;
+            tracing::info!(variable, %command, "executing Hyprland command variable");
+            spawn_detached("sh", &["-lc".to_owned(), format!("exec {command}")])
         }
 
         Action::ModuleAction { module, action } => {
@@ -94,6 +93,58 @@ pub async fn dispatch_action(action: &Action, hypr_socket: &Path) -> Result<(), 
             Ok(())
         }
     }
+}
+
+fn spawn_detached(command: &str, args: &[String]) -> Result<(), ActionError> {
+    let result = tokio::process::Command::new(command)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    match result {
+        Ok(_child) => Ok(()),
+        Err(source) => Err(ActionError::SpawnFailed {
+            command: command.to_owned(),
+            source,
+        }),
+    }
+}
+
+fn resolve_hyprland_variable(variable: &str) -> Option<String> {
+    let path = hyprland_config_path()?;
+    let source = std::fs::read_to_string(path).ok()?;
+    variable_from_config(&source, variable)
+}
+
+fn hyprland_config_path() -> Option<PathBuf> {
+    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(|home| PathBuf::from(home).join(".config"))
+        })?;
+    Some(config_home.join("hypr/hyprland.conf"))
+}
+
+fn variable_from_config(source: &str, variable: &str) -> Option<String> {
+    let wanted = variable.trim().trim_start_matches('$');
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.starts_with('#') {
+                return None;
+            }
+            let (name, value) = line.split_once('=')?;
+            (name.trim().strip_prefix('$')? == wanted)
+                .then(|| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        })
+        .next_back()
 }
 
 /// Box the recursive call to avoid infinite future size.
@@ -134,6 +185,35 @@ mod tests {
         };
         let json = serde_json::to_string(&action).expect("serialize");
         assert!(json.contains("\"type\":\"chain\""));
+    }
+
+    #[test]
+    fn hyprland_exec_roundtrips() {
+        let action = Action::HyprlandExec {
+            variable: "menu".into(),
+            fallback: Some("wofi --show drun".into()),
+        };
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains("\"type\":\"hyprland_exec\""));
+        assert!(matches!(
+            serde_json::from_str::<Action>(&json).unwrap(),
+            Action::HyprlandExec { variable, .. } if variable == "menu"
+        ));
+    }
+
+    #[test]
+    fn config_variable_parser_uses_last_active_definition() {
+        let config = r#"
+            # $menu = ignored
+            $menu = fuzzel
+            $terminal = kitty
+            $menu = wofi --show drun
+        "#;
+        assert_eq!(
+            variable_from_config(config, "$menu").as_deref(),
+            Some("wofi --show drun")
+        );
+        assert_eq!(variable_from_config(config, "missing"), None);
     }
 
     #[test]

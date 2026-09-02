@@ -148,16 +148,41 @@ pub async fn dispatch(socket_path: &Path, args: &str) -> Result<(), IpcError> {
 /// Pure function — extracted from [`hydrate_state`] so it can be tested
 /// without touching a socket. Picks the focused window as the one with
 /// `focusHistoryID == 0` (marked as `is_focused` during deserialization)
-/// and leaves urgency flags clear — urgent state is only observed via the
-/// event socket.
+/// and derives both the focused monitor and workspace urgency from the
+/// authoritative snapshot. This means reconnects repair rather than discard
+/// pending urgency.
 fn assemble_state(
-    workspaces: Vec<Workspace>,
+    mut workspaces: Vec<Workspace>,
     windows: Vec<WindowInfo>,
     monitors: Vec<MonitorInfo>,
     active_ws: Workspace,
 ) -> HyprState {
     let active_workspace_id = active_ws.id;
     let active_window = windows.iter().find(|w| w.is_focused).cloned();
+    let focused_monitor = if monitors
+        .iter()
+        .any(|monitor| monitor.name == active_ws.monitor)
+    {
+        active_ws.monitor.clone()
+    } else {
+        monitors
+            .iter()
+            .find(|monitor| monitor.active_workspace == active_workspace_id)
+            .map(|monitor| monitor.name.clone())
+            .unwrap_or_default()
+    };
+
+    // A workspace currently visible on any monitor is already acknowledged.
+    // Preserve compositor-reported urgency only for hidden workspaces.
+    for workspace in &mut workspaces {
+        let visible = monitors
+            .iter()
+            .any(|monitor| monitor.active_workspace == workspace.id);
+        workspace.has_urgent = !visible
+            && windows
+                .iter()
+                .any(|window| window.workspace_id == workspace.id && window.is_urgent);
+    }
 
     HyprState {
         workspaces,
@@ -165,7 +190,7 @@ fn assemble_state(
         active_window,
         monitors,
         windows,
-        focused_monitor: String::new(),
+        focused_monitor,
     }
 }
 
@@ -204,6 +229,8 @@ struct RawClient {
     focus_history_id: i32,
     #[serde(default)]
     fullscreen: FullscreenField,
+    #[serde(default)]
+    urgent: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -248,6 +275,7 @@ impl From<RawClient> for WindowInfo {
             // focusHistoryID == 0 => most recently focused window.
             is_focused: raw.focus_history_id == 0,
             is_fullscreen: raw.fullscreen.0,
+            is_urgent: raw.urgent,
         }
     }
 }
@@ -434,6 +462,7 @@ mod tests {
 
         let state = assemble_state(workspaces, windows, monitors, active_ws);
         assert_eq!(state.active_workspace, 2);
+        assert_eq!(state.focused_monitor, "DP-1");
         assert_eq!(state.windows.len(), 2);
         assert_eq!(state.monitors.len(), 1);
         // The focused-flagged window is on ws 1, not the active ws 2 — the

@@ -2,6 +2,8 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use tiny_skia::Pixmap;
 
+pub use hyprdeck_config::{ConfigField, ConfigFieldType, ModuleConfigSchema};
+
 use crate::action::Action;
 use crate::geometry::{Rect, Size};
 use crate::ipc::event::HyprState;
@@ -47,6 +49,13 @@ pub struct ThemeContext {
     pub padding: Padding,
     pub border_radius: f32,
     pub opacity: f32,
+    /// Side length of an icon-only module slot, resolved from this panel's
+    /// content thickness. All built-in icon-only status modules request this
+    /// size so adjacent indicators have a consistent footprint.
+    pub icon_slot_size: f32,
+    /// Inset between an icon-only module slot and its drawn icon content.
+    /// Resolved from the theme's optional `style.icon_padding` key.
+    pub icon_padding: f32,
     /// Gap between the icon half and text half in verbose display mode, in
     /// logical pixels.  Resolved from the theme's `verbose_text_padding` key,
     /// defaulting to `bar_height / 8` when the key is absent.
@@ -117,64 +126,8 @@ pub enum EventResult {
     Action(Action),
 }
 
-// ── Config schema (HyprCube integration) ──────────────────────────────────────
-
-/// Self-description of a module's configurable options.
-///
-/// Returned by [`PanelModule::config_schema`] so HyprCube can auto-generate
-/// settings UI without knowing anything about the module at compile time.
-pub struct ModuleConfigSchema {
-    /// Unique module type identifier (matches the module's `id()` return value).
-    pub module_id: String,
-    pub fields: Vec<ConfigField>,
-}
-
-/// A single configurable option declared by a module.
-pub struct ConfigField {
-    /// TOML key used to set this field in `hyprdeck.toml`.
-    pub key: String,
-    /// Short human-readable label for the settings UI.
-    pub label: String,
-    /// Longer explanatory text shown in the settings UI.
-    pub description: String,
-    pub field_type: ConfigFieldType,
-}
-
-/// Declares the widget type and constraints for a [`ConfigField`].
-#[derive(Debug)]
-pub enum ConfigFieldType {
-    Text {
-        default: String,
-    },
-    Integer {
-        default: i64,
-        min: Option<i64>,
-        max: Option<i64>,
-    },
-    Float {
-        default: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-    },
-    Boolean {
-        default: bool,
-    },
-    Choice {
-        options: Vec<String>,
-        default: String,
-    },
-    /// Like `Choice` but supplies human-readable display labels alongside the
-    /// serialised option strings. HyprCube renders `labels` in its dropdown;
-    /// `options` are the values written to `hyprdeck.toml`.
-    LabeledChoice {
-        options: Vec<String>,
-        labels: Vec<String>,
-        default: String,
-    },
-    Color {
-        default: String,
-    },
-}
+// Schema types live in `hyprdeck-config` so settings editors can consume the
+// same versioned contract without linking the Wayland/rendering runtime.
 
 // ── Core module trait ──────────────────────────────────────────────────────────
 

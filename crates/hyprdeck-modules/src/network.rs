@@ -106,13 +106,10 @@ impl PanelModule for NetworkModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let h = theme.fonts.size * 2.0;
+        let slot = theme.icon_slot_size;
         match self.config.display {
-            DisplayMode::Icon => {
-                let padding = theme.padding.left + theme.padding.right + 8.0;
-                Size::new(h + padding, h)
-            }
-            DisplayMode::Verbose => Size::new(h * 2.0, h),
+            DisplayMode::Icon => Size::new(slot, slot),
+            DisplayMode::Verbose => Size::new(slot * 2.0, slot),
         }
     }
 
@@ -164,8 +161,7 @@ impl PanelModule for NetworkModule {
 
         match self.config.display {
             DisplayMode::Icon => {
-                let icon_size = render_utils::canonical_icon_size(bounds);
-                let icon_rect = render_utils::centered_icon_rect(bounds, icon_size);
+                let icon_rect = render_utils::icon_content_rect(bounds, theme.icon_padding);
                 if self.snapshot.is_wireless {
                     draw_wifi_icon(canvas, icon_rect, active, self.snapshot.signal_dbm);
                 } else {

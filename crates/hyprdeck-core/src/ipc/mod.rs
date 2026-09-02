@@ -43,7 +43,9 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 pub use command::CommandClient;
-pub use event::{HyprEvent, HyprState, MonitorInfo, WindowInfo, Workspace, parse_event};
+pub use event::{
+    HyprEvent, HyprState, MonitorInfo, WindowInfo, Workspace, WorkspaceRef, parse_event,
+};
 pub use socket::{EventSocket, start_event_listener};
 
 /// Errors returned by the IPC layer.

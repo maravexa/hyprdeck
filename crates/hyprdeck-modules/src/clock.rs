@@ -237,6 +237,8 @@ mod tests {
             },
             border_radius: 4.0,
             opacity: 1.0,
+            icon_slot_size: 24.0,
+            icon_padding: 2.0,
             verbose_text_padding: 4.0,
             module_styles: ResolvedModuleStyles::default(),
         }

@@ -7,9 +7,10 @@ This index is the navigation point for maintained project documentation. Source 
 | Subject | Authoritative source |
 | --- | --- |
 | Workspace members, versions, edition, dependencies | Root and crate `Cargo.toml` files plus `Cargo.lock` |
+| Release artifacts, crates.io order, and AUR preparation | [Release guide](release.md) |
 | Runtime behavior and public Rust contracts | `crates/*/src/` and generated rustdoc |
 | Built-in module IDs | `crates/hyprdeck-modules/src/lib.rs` |
-| Configuration schema and defaults | `crates/hyprdeck-core/src/config.rs` and module config types |
+| Shared configuration contract and defaults | `crates/hyprdeck-config/src/lib.rs` and module config types |
 | Theme schema, loading, and shipped data | `crates/hyprdeck-core/src/theme.rs`, `crates/hyprdeck-themes/src/`, and `themes/` |
 | Required automation | `.github/workflows/` |
 | User-visible change history | `CHANGELOG.md` |

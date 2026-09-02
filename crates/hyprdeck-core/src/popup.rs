@@ -13,7 +13,7 @@
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use smithay_client_toolkit::shm::slot::SlotPool;
-use tiny_skia::Pixmap;
+use tiny_skia::{Pixmap, PixmapPaint, Transform};
 use wayland_client::Proxy;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
@@ -63,6 +63,100 @@ pub trait PopupContent: Send {
     /// Prevents premature close when the pointer briefly leaves the popup bounds.
     fn is_dragging(&self) -> bool {
         false
+    }
+}
+
+/// Default visual and interaction scale for module popups.
+pub const DEFAULT_POPUP_SCALE: f32 = 2.0;
+
+/// Raster-scale a popup as one unit while translating pointer coordinates back
+/// into the module's original logical coordinate space.
+struct ScaledPopupContent {
+    inner: Box<dyn PopupContent>,
+    scale: f32,
+}
+
+impl ScaledPopupContent {
+    fn new(inner: Box<dyn PopupContent>, scale: f32) -> Self {
+        Self {
+            inner,
+            scale: scale.max(1.0),
+        }
+    }
+
+    fn logical_bounds(&self, bounds: Rect) -> Rect {
+        Rect::new(
+            bounds.x / self.scale,
+            bounds.y / self.scale,
+            bounds.width / self.scale,
+            bounds.height / self.scale,
+        )
+    }
+
+    fn logical_event(&self, event: &InputEvent) -> InputEvent {
+        match event {
+            InputEvent::MousePress { x, y, button } => InputEvent::MousePress {
+                x: *x / self.scale,
+                y: *y / self.scale,
+                button: *button,
+            },
+            InputEvent::MouseRelease { x, y, button } => InputEvent::MouseRelease {
+                x: *x / self.scale,
+                y: *y / self.scale,
+                button: *button,
+            },
+            InputEvent::MouseMove { x, y } => InputEvent::MouseMove {
+                x: *x / self.scale,
+                y: *y / self.scale,
+            },
+            InputEvent::Scroll { dx, dy } => InputEvent::Scroll { dx: *dx, dy: *dy },
+            InputEvent::KeyPress { key, modifiers } => InputEvent::KeyPress {
+                key: *key,
+                modifiers: *modifiers,
+            },
+        }
+    }
+}
+
+impl PopupContent for ScaledPopupContent {
+    fn desired_size(&self, theme: &ThemeContext) -> Size {
+        let size = self.inner.desired_size(theme);
+        Size::new(size.width * self.scale, size.height * self.scale)
+    }
+
+    fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
+        let logical = self.logical_bounds(bounds);
+        let width = logical.width.ceil().max(1.0) as u32;
+        let height = logical.height.ceil().max(1.0) as u32;
+        let Some(mut source) = Pixmap::new(width, height) else {
+            return;
+        };
+        self.inner.render(
+            &mut source,
+            theme,
+            Rect::new(0.0, 0.0, width as f32, height as f32),
+        );
+        canvas.draw_pixmap(
+            bounds.x as i32,
+            bounds.y as i32,
+            source.as_ref(),
+            &PixmapPaint::default(),
+            Transform::from_scale(self.scale, self.scale),
+            None,
+        );
+    }
+
+    fn handle_event(&mut self, event: &InputEvent, bounds: Rect) -> PopupEventResult {
+        let event = self.logical_event(event);
+        self.inner.handle_event(&event, self.logical_bounds(bounds))
+    }
+
+    fn update(&mut self) -> bool {
+        self.inner.update()
+    }
+
+    fn is_dragging(&self) -> bool {
+        self.inner.is_dragging()
     }
 }
 
@@ -123,9 +217,7 @@ impl PopupState {
 
     /// Close the active popup, destroying its Wayland surface if present.
     pub fn close(&mut self) {
-        tracing::info!("Popup close called, active={:?}", self.active_module);
         if let Some(ls) = self.layer_surface.take() {
-            tracing::info!("Destroying popup Wayland surface");
             drop(ls);
         }
         self.pool = None;
@@ -144,11 +236,13 @@ impl PopupState {
     /// Surface creation is done by the binary crate via [`attach_surface`][Self::attach_surface]
     /// once the content's desired size is known and compositor handles are available.
     pub fn open(&mut self, module_id: String, content: Box<dyn PopupContent>) {
-        tracing::info!("Opening popup for '{}'", module_id);
         // close() destroys any existing Wayland surface before we replace content.
         self.close();
         self.active_module = Some(module_id);
-        self.content = Some(content);
+        self.content = Some(Box::new(ScaledPopupContent::new(
+            content,
+            DEFAULT_POPUP_SCALE,
+        )));
         self.dirty = true;
     }
 
@@ -177,7 +271,6 @@ impl PopupState {
         self.width = width;
         self.height = height;
         self.dirty = true;
-        tracing::debug!("Popup surface state initialised: {}x{}", width, height);
     }
 
     /// Returns the Wayland `ObjectId` of the popup surface, if one exists.
@@ -193,9 +286,7 @@ impl PopupState {
     /// `content_fn` is only called when opening a new popup; it is not called
     /// when closing.
     pub fn toggle(&mut self, module_id: &str, content_fn: impl FnOnce() -> Box<dyn PopupContent>) {
-        tracing::info!("popup.toggle called for '{}'", module_id);
         if self.active_module.as_deref() == Some(module_id) {
-            tracing::info!("Closing popup for '{}'", module_id);
             self.close();
         } else {
             self.open(module_id.to_string(), content_fn());
@@ -245,7 +336,11 @@ impl PopupState {
         if let (Some(canvas), Some(content)) = (self.canvas.as_mut(), self.content.as_ref()) {
             canvas.clear();
             let bg = theme.colors.background;
-            canvas.fill_rounded_rect(bounds, [bg[0], bg[1], bg[2], 255], theme.border_radius);
+            canvas.fill_rounded_rect(
+                bounds,
+                [bg[0], bg[1], bg[2], 255],
+                theme.border_radius * DEFAULT_POPUP_SCALE,
+            );
             content.render(canvas.pixmap_mut(), theme, bounds);
         }
 
@@ -304,24 +399,6 @@ impl PopupState {
         }
         wl_surface.damage_buffer(0, 0, w as i32, h as i32);
         wl_surface.commit();
-        tracing::info!("Popup buffer submitted {}x{}", w, h);
-
-        // ── Diagnostic: save popup canvas to PNG for offline inspection ──────
-        //
-        // Inspect /tmp/hyprdeck-popup-debug.png after a popup opens:
-        //   • All transparent → rendering problem (content not drawn into canvas)
-        //   • Visible content  → positioning or compositor-layer problem
-        //   • Wrong colours    → pixel-format mismatch (R↔B swap needed/wrong)
-        //
-        // Remove this block once the popup is confirmed visible on screen.
-        #[cfg(debug_assertions)]
-        if let Some(canvas) = &self.canvas {
-            let pixmap = canvas.pixmap();
-            match pixmap.save_png("/tmp/hyprdeck-popup-debug.png") {
-                Ok(()) => tracing::info!("Saved popup debug PNG → /tmp/hyprdeck-popup-debug.png"),
-                Err(e) => tracing::error!("Failed to save popup debug PNG: {}", e),
-            }
-        }
     }
 
     /// Render the popup content into an external `canvas` (for off-screen compositing).
@@ -384,6 +461,24 @@ mod tests {
         }
     }
 
+    struct UpdatingPopup {
+        updates: u8,
+    }
+
+    impl PopupContent for UpdatingPopup {
+        fn desired_size(&self, _theme: &ThemeContext) -> Size {
+            Size::new(100.0, 100.0)
+        }
+        fn render(&self, _canvas: &mut Pixmap, _theme: &ThemeContext, _bounds: Rect) {}
+        fn handle_event(&mut self, _event: &InputEvent, _bounds: Rect) -> PopupEventResult {
+            PopupEventResult::Ignored
+        }
+        fn update(&mut self) -> bool {
+            self.updates += 1;
+            self.updates == 1
+        }
+    }
+
     #[test]
     fn popup_state_starts_closed() {
         let state = PopupState::new();
@@ -440,5 +535,17 @@ mod tests {
         let mut state = PopupState::new();
         let event = InputEvent::MouseMove { x: 0.0, y: 0.0 };
         assert!(state.handle_event(&event, Rect::default()).is_none());
+    }
+
+    #[test]
+    fn update_marks_popup_dirty_when_content_changes() {
+        let mut state = PopupState::new();
+        state.open("test".into(), Box::new(UpdatingPopup { updates: 0 }));
+        state.dirty = false;
+        assert!(state.update());
+        assert!(state.dirty);
+        state.dirty = false;
+        assert!(!state.update());
+        assert!(!state.dirty);
     }
 }

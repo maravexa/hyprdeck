@@ -8,14 +8,17 @@ These instructions apply to the whole workspace. More-specific `AGENTS.md` files
 
 - `Cargo.toml` defines workspace membership, shared dependencies, Rust edition, and package metadata.
 - Each crate's `Cargo.toml` defines its dependency boundary.
-- `crates/*/src/` defines runtime behavior and public Rust contracts.
+- `crates/*/src/` defines runtime behavior and public Rust contracts;
+  `crates/hyprdeck-config` owns the editor-safe configuration contract.
 - `themes/*/theme.toml` defines shipped theme data; `crates/hyprdeck-themes/src/defaults.rs` embeds it.
 - `.github/workflows/ci.yml` defines required CI checks; `.github/workflows/security.yml` defines the dependency audit.
 - The documentation index at `docs/README.md` identifies the maintained project documents.
 
 ## Change rules
 
-- Keep dependencies flowing from `hyprdeck` to the library crates, from `hyprdeck-modules` and `hyprdeck-themes` to `hyprdeck-core`, and never in reverse.
+- Keep dependencies flowing from `hyprdeck` to the library crates, from
+  `hyprdeck-modules` and `hyprdeck-themes` to `hyprdeck-core`, and from core to
+  `hyprdeck-config`; never in reverse.
 - Keep public behavior, configuration, module IDs, and theme data consistent with their defining source and tests.
 - Update the relevant maintained documentation when changing a public interface, user configuration, shipped theme/module behavior, supported workflow, or known limitation.
 - Test Wayland or Hyprland behavior in a live Hyprland Wayland session when runtime validation is needed; compilation and unit tests do not validate compositor integration.

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/hyprdeck",
+    "crates/hyprdeck-config",
     "crates/hyprdeck-core",
     "crates/hyprdeck-modules",
     "crates/hyprdeck-themes",
@@ -10,13 +11,17 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["Mara Vexa"]
 license = "MIT"
 repository = "https://github.com/maravexa/hyprdeck"
+readme = "README.md"
 
 [workspace.dependencies]
-hyprdeck-core    = { path = "crates/hyprdeck-core" }
-hyprdeck-modules = { path = "crates/hyprdeck-modules" }
-hyprdeck-themes  = { path = "crates/hyprdeck-themes" }
+hyprdeck-config  = { version = "0.1.0", path = "crates/hyprdeck-config" }
+hyprdeck-core    = { version = "0.1.0", path = "crates/hyprdeck-core" }
+hyprdeck-modules = { version = "0.1.0", path = "crates/hyprdeck-modules" }
+hyprdeck-themes  = { version = "0.1.0", path = "crates/hyprdeck-themes" }
 
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["xkbcommon"] }
 wayland-client         = "0.31"
@@ -24,8 +29,17 @@ wayland-client         = "0.31"
 tiny-skia    = "0.12"
 cosmic-text  = "0.12"
 image        = { version = "0.25", default-features = false, features = ["png", "ico"] }
+resvg        = { version = "0.48", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "signal"] }
+# Pin the whole zbus family because newer compatible semver releases raised
+# their MSRV beyond HyprDeck's Rust 1.85 support policy.
+zbus = { version = "=5.8.0", default-features = false, features = ["tokio"] }
+zbus_macros = "=5.8.0"
+zbus_names = "=4.2.0"
+zvariant = "=5.8.0"
+zvariant_derive = "=5.8.0"
+zvariant_utils = "=3.2.0"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

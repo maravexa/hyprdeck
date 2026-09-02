@@ -34,6 +34,10 @@ const EVENT_CHANNEL_CAPACITY: usize = 64;
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 /// Upper bound for the reconnect backoff.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// Coalesce event bursts before correcting the optimistic socket state from
+/// Hyprland's command socket. This bounds query traffic while ensuring a bad
+/// or missed event cannot desynchronise panels permanently.
+const RECONCILE_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Persistent connection to Hyprland's event socket.
 ///
@@ -135,33 +139,69 @@ async fn reader_loop(
 ) {
     let mut reader = BufReader::new(initial_stream);
     let mut backoff = INITIAL_BACKOFF;
+    let mut reconcile_tick = tokio::time::interval(RECONCILE_INTERVAL);
+    reconcile_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut reconcile_needed = false;
+    // Consume interval's immediate first tick so the first refresh is caused
+    // by actual state activity, not merely connecting.
+    reconcile_tick.tick().await;
+    let mut line = Vec::new();
 
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line).await {
-            Ok(0) => {
-                warn!("Hyprland event socket closed (EOF); reconnecting");
-            }
-            Ok(_) => {
-                // Successful read resets the backoff.
-                backoff = INITIAL_BACKOFF;
-                if let Some(event) = parse_event(&line) {
-                    {
-                        let mut guard = state.write().await;
-                        guard.apply_event(&event);
+        // `read_until` is cancellation-safe, unlike `read_line`; the timer
+        // branch below keeps this buffer so it can resume a partial event
+        // without losing bytes while coalescing a reconciliation refresh.
+        tokio::select! {
+            read = reader.read_until(b'\n', &mut line) => match read {
+                Ok(0) => {
+                    warn!("Hyprland event socket closed (EOF); reconnecting");
+                }
+                Ok(_) => {
+                    // Successful read resets the backoff.
+                    backoff = INITIAL_BACKOFF;
+                    let raw_line = String::from_utf8_lossy(&line);
+                    if let Some(event) = parse_event(&raw_line) {
+                        reconcile_needed |= event.requires_reconciliation();
+                        {
+                            let mut guard = state.write().await;
+                            guard.apply_event(&event);
+                        }
+                        // Broadcast failure just means no subscribers — not
+                        // an error we should log loudly.
+                        let _ = tx.send(event);
+                    } else if !raw_line.trim().is_empty() {
+                        // An unsupported or malformed line can still represent
+                        // state HyprDeck needs. Reconcile rather than leaving a
+                        // stale taskbar/workspace model forever.
+                        reconcile_needed = true;
                     }
-                    // Broadcast failure just means no subscribers — not
-                    // an error we should log loudly.
-                    let _ = tx.send(event);
+                    line.clear();
+                    continue;
+                }
+                Err(err) => {
+                    warn!(error = %err, "Hyprland event socket read failed; reconnecting");
+                    line.clear();
+                }
+            },
+            _ = reconcile_tick.tick(), if reconcile_needed => {
+                match command::hydrate_state(&command_socket_path).await {
+                    Ok(fresh) => {
+                        let mut guard = state.write().await;
+                        guard.reconcile_authoritative(fresh);
+                        reconcile_needed = false;
+                        debug!("HyprState reconciled after event activity");
+                    }
+                    Err(err) => {
+                        // Keep the dirty marker so the next interval retries.
+                        warn!(error = %err, "Failed to reconcile HyprState after event activity");
+                    }
                 }
                 continue;
-            }
-            Err(err) => {
-                warn!(error = %err, "Hyprland event socket read failed; reconnecting");
             }
         }
 
         // Reconnect with exponential backoff, re-hydrating state on success.
+        line.clear();
         reader = match reconnect(
             &event_socket_path,
             &command_socket_path,
@@ -176,6 +216,7 @@ async fn reader_loop(
                 return;
             }
         };
+        reconcile_needed = false;
     }
 }
 
@@ -202,7 +243,7 @@ async fn reconnect(
                 match command::hydrate_state(command_socket_path).await {
                     Ok(fresh) => {
                         let mut guard = state.write().await;
-                        *guard = fresh;
+                        guard.reconcile_authoritative(fresh);
                         debug!("HyprState re-hydrated after reconnect");
                     }
                     Err(err) => {

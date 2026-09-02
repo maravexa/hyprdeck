@@ -17,19 +17,27 @@ use tracing::debug;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HyprEvent {
     /// Active workspace changed to the given workspace ID.
-    WorkspaceChanged { id: i32 },
+    WorkspaceChanged { workspace: WorkspaceRef },
     /// A workspace was created (`createworkspace`).
-    WorkspaceAdded { id: i32 },
+    WorkspaceAdded { workspace: WorkspaceRef },
     /// A workspace was destroyed (`destroyworkspace`).
-    WorkspaceDestroyed { id: i32 },
+    WorkspaceDestroyed { workspace: WorkspaceRef },
     /// A workspace was moved to a different monitor.
-    WorkspaceMoved { id: i32, monitor: String },
+    WorkspaceMoved {
+        workspace: WorkspaceRef,
+        monitor: String,
+    },
+    /// A workspace was renamed (`renameworkspace`).
+    WorkspaceRenamed { id: i32, name: String },
     /// The active window changed (`activewindow`).
     ActiveWindow { class: String, title: String },
     /// The active window address (`activewindowv2`).
     ActiveWindowV2 { address: String },
     /// The focused monitor changed (`focusedmon`).
-    ActiveMonitor { name: String, workspace_id: i32 },
+    ActiveMonitor {
+        name: String,
+        workspace: WorkspaceRef,
+    },
     /// Fullscreen state of the focused window toggled.
     Fullscreen { enter: bool },
     /// A monitor was hot-plugged.
@@ -54,7 +62,7 @@ pub enum HyprEvent {
     /// A window moved to a different workspace.
     WindowMoved {
         address: String,
-        workspace_name: String,
+        workspace: WorkspaceRef,
     },
     /// The keyboard layout changed for a device.
     LayoutChanged { keyboard: String, layout: String },
@@ -66,6 +74,17 @@ pub enum HyprEvent {
     WindowTitle { address: String },
     /// A window's title changed (`windowtitlev2`, address + new title).
     WindowTitleV2 { address: String, title: String },
+}
+
+/// A workspace identified by either its numeric Hyprland ID or its name.
+///
+/// The legacy event stream uses names for several events, while the `v2`
+/// variants use numeric IDs. Keeping that distinction until state application
+/// lets named workspaces work without guessing that a name is an integer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceRef {
+    Id(i32),
+    Name(String),
 }
 
 /// Aggregated Hyprland compositor state.
@@ -90,14 +109,43 @@ pub struct HyprState {
 }
 
 impl HyprState {
+    /// Replace topology with an authoritative command-socket snapshot while
+    /// retaining urgency that Hyprland reports only on the event socket.
+    ///
+    /// Hyprland 0.56 does not include an `urgent` field in `clients -j`.
+    /// Matching by normalized address keeps a pending alert across routine
+    /// reconciliation. Focus/workspace events clear `is_urgent` before this
+    /// merge, and windows absent from the fresh snapshot are still discarded.
+    pub fn reconcile_authoritative(&mut self, mut fresh: Self) {
+        for window in &mut fresh.windows {
+            let visible = fresh
+                .monitors
+                .iter()
+                .any(|monitor| monitor.active_workspace == window.workspace_id);
+            if !window.is_urgent && !visible {
+                window.is_urgent = self
+                    .windows
+                    .iter()
+                    .find(|old| old.address == window.address)
+                    .is_some_and(|old| old.is_urgent);
+            }
+        }
+        fresh.recompute_workspace_urgency();
+        *self = fresh;
+    }
+
     /// Apply a single event, mutating state in-place.
     ///
     /// Unknown addresses, workspaces, or monitors are logged at `debug` level
     /// and skipped — this method never panics.
     pub fn apply_event(&mut self, event: &HyprEvent) {
         match event {
-            HyprEvent::WorkspaceChanged { id } => {
-                self.active_workspace = *id;
+            HyprEvent::WorkspaceChanged { workspace } => {
+                let Some(id) = self.workspace_id(workspace) else {
+                    debug!(?workspace, "workspace change for unknown workspace");
+                    return;
+                };
+                self.active_workspace = id;
                 // Update the focused monitor's active workspace immediately so
                 // per-monitor rendering reflects the change without waiting for
                 // a subsequent `focusedmon` event.
@@ -106,31 +154,53 @@ impl HyprState {
                     .iter_mut()
                     .find(|m| m.name == self.focused_monitor)
                 {
-                    mon.active_workspace = *id;
+                    mon.active_workspace = id;
                 }
-                // Switching to a workspace acknowledges any pending alert.
-                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *id) {
-                    ws.has_urgent = false;
-                }
+                // Switching to a workspace acknowledges every pending alert on
+                // it. Recomputing from windows prevents late urgent events from
+                // leaving a stale red workspace square behind.
+                self.clear_workspace_urgency(id);
             }
-            HyprEvent::WorkspaceAdded { id } => {
-                if !self.workspaces.iter().any(|ws| ws.id == *id) {
+            HyprEvent::WorkspaceAdded { workspace } => {
+                let Some(id) = self.workspace_id(workspace).or_else(|| workspace.id()) else {
+                    debug!(?workspace, "workspace creation requires reconciliation");
+                    return;
+                };
+                if !self.workspaces.iter().any(|ws| ws.id == id) {
                     self.workspaces.push(Workspace {
-                        id: *id,
-                        name: id.to_string(),
+                        id,
+                        name: workspace
+                            .name()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| id.to_string()),
                         monitor: String::new(),
                         has_urgent: false,
                     });
                 }
             }
-            HyprEvent::WorkspaceDestroyed { id } => {
-                self.workspaces.retain(|ws| ws.id != *id);
+            HyprEvent::WorkspaceDestroyed { workspace } => {
+                if let Some(id) = self.workspace_id(workspace) {
+                    self.workspaces.retain(|ws| ws.id != id);
+                } else {
+                    debug!(?workspace, "workspace destruction for unknown workspace");
+                }
             }
-            HyprEvent::WorkspaceMoved { id, monitor } => {
-                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *id) {
+            HyprEvent::WorkspaceMoved { workspace, monitor } => {
+                let Some(id) = self.workspace_id(workspace) else {
+                    debug!(?workspace, "moveworkspace for unknown workspace");
+                    return;
+                };
+                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == id) {
                     ws.monitor = monitor.clone();
                 } else {
                     debug!(workspace_id = id, "moveworkspace for unknown workspace");
+                }
+            }
+            HyprEvent::WorkspaceRenamed { id, name } => {
+                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *id) {
+                    ws.name = name.clone();
+                } else {
+                    debug!(workspace_id = id, "renameworkspace for unknown workspace");
                 }
             }
             HyprEvent::ActiveWindow { class, title } => {
@@ -156,6 +226,7 @@ impl HyprState {
                         workspace_id: self.active_workspace,
                         is_focused: true,
                         is_fullscreen: false,
+                        is_urgent: false,
                     });
                 }
             }
@@ -177,7 +248,12 @@ impl HyprState {
                 title,
             } => {
                 let address = normalize_address(address);
-                let workspace_id = workspace_id_from_name(workspace_name, &self.workspaces);
+                let Some(workspace_id) =
+                    self.workspace_id(&WorkspaceRef::Name(workspace_name.clone()))
+                else {
+                    debug!(workspace = %workspace_name, "openwindow for unknown workspace");
+                    return;
+                };
                 // If we already know about this window (race with hydration),
                 // update instead of duplicating.
                 if let Some(existing) = self.windows.iter_mut().find(|w| w.address == address) {
@@ -192,6 +268,7 @@ impl HyprState {
                         workspace_id,
                         is_focused: false,
                         is_fullscreen: false,
+                        is_urgent: false,
                     });
                 }
             }
@@ -207,18 +284,20 @@ impl HyprState {
                         self.active_window = None;
                     }
                 }
+                self.recompute_workspace_urgency();
             }
-            HyprEvent::WindowMoved {
-                address,
-                workspace_name,
-            } => {
+            HyprEvent::WindowMoved { address, workspace } => {
                 let normalized = normalize_address(address);
-                let workspace_id = workspace_id_from_name(workspace_name, &self.workspaces);
+                let Some(workspace_id) = self.workspace_id(workspace) else {
+                    debug!(?workspace, "movewindow for unknown workspace");
+                    return;
+                };
                 if let Some(win) = self.windows.iter_mut().find(|w| w.address == normalized) {
                     win.workspace_id = workspace_id;
                 } else {
                     debug!(address = %normalized, "movewindow for unknown window");
                 }
+                self.recompute_workspace_urgency();
             }
             HyprEvent::Urgent { address } => {
                 let normalized = normalize_address(address);
@@ -232,11 +311,11 @@ impl HyprState {
                         // Suppress the alert if the workspace is already the
                         // active one on some monitor — the user can see it.
                         let visible = self.monitors.iter().any(|m| m.active_workspace == ws_id);
-                        if !visible {
-                            if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == ws_id) {
-                                ws.has_urgent = true;
-                            }
+                        if let Some(win) = self.windows.iter_mut().find(|w| w.address == normalized)
+                        {
+                            win.is_urgent = !visible;
                         }
+                        self.recompute_workspace_urgency();
                     }
                     None => {
                         debug!(address = %normalized, "urgent for unknown window");
@@ -259,19 +338,22 @@ impl HyprState {
             }
             HyprEvent::MonitorRemoved { name } => {
                 self.monitors.retain(|m| m.name != *name);
+                self.recompute_workspace_urgency();
             }
-            HyprEvent::ActiveMonitor { name, workspace_id } => {
+            HyprEvent::ActiveMonitor { name, workspace } => {
+                let Some(workspace_id) = self.workspace_id(workspace) else {
+                    debug!(monitor = %name, ?workspace, "focusedmon for unknown workspace");
+                    return;
+                };
                 self.focused_monitor = name.clone();
                 if let Some(mon) = self.monitors.iter_mut().find(|m| m.name == *name) {
-                    mon.active_workspace = *workspace_id;
+                    mon.active_workspace = workspace_id;
                 } else {
                     debug!(monitor = %name, "focusedmon for unknown monitor");
                 }
-                self.active_workspace = *workspace_id;
+                self.active_workspace = workspace_id;
                 // The newly focused workspace is in view — clear any alert.
-                if let Some(ws) = self.workspaces.iter_mut().find(|ws| ws.id == *workspace_id) {
-                    ws.has_urgent = false;
-                }
+                self.clear_workspace_urgency(workspace_id);
             }
             HyprEvent::Fullscreen { enter } => {
                 let addr = self.active_window.as_mut().map(|active| {
@@ -313,6 +395,61 @@ impl HyprState {
             }
         }
     }
+
+    /// Return the known ID for an event workspace reference.
+    fn workspace_id(&self, workspace: &WorkspaceRef) -> Option<i32> {
+        match workspace {
+            WorkspaceRef::Id(id) => Some(*id),
+            WorkspaceRef::Name(name) => self
+                .workspaces
+                .iter()
+                .find(|ws| ws.name == *name)
+                .map(|ws| ws.id),
+        }
+    }
+
+    /// Clear acknowledged urgency on every window in `workspace_id` and
+    /// recalculate the compact workspace-level rendering state.
+    fn clear_workspace_urgency(&mut self, workspace_id: i32) {
+        for window in &mut self.windows {
+            if window.workspace_id == workspace_id {
+                window.is_urgent = false;
+            }
+        }
+        self.recompute_workspace_urgency();
+    }
+
+    /// Derive workspace urgency from windows, excluding workspaces visible on
+    /// any monitor. This keeps the public workspace flag a render cache rather
+    /// than an independently stale source of truth.
+    pub fn recompute_workspace_urgency(&mut self) {
+        for workspace in &mut self.workspaces {
+            let visible = self
+                .monitors
+                .iter()
+                .any(|monitor| monitor.active_workspace == workspace.id);
+            workspace.has_urgent = !visible
+                && self
+                    .windows
+                    .iter()
+                    .any(|window| window.workspace_id == workspace.id && window.is_urgent);
+        }
+    }
+}
+
+impl HyprEvent {
+    /// Whether this event can make the cached workspace, monitor, or client
+    /// topology diverge from Hyprland's authoritative command-socket state.
+    ///
+    /// The event listener applies these events immediately for responsiveness,
+    /// then coalesces an authoritative refresh. That second step is important
+    /// for dropped events, unknown named workspaces, and protocol changes.
+    pub fn requires_reconciliation(&self) -> bool {
+        !matches!(
+            self,
+            Self::LayoutChanged { .. } | Self::SubMap { .. } | Self::FloatingMode { .. }
+        )
+    }
 }
 
 /// A Hyprland workspace descriptor.
@@ -334,6 +471,8 @@ pub struct WindowInfo {
     pub workspace_id: i32,
     pub is_focused: bool,
     pub is_fullscreen: bool,
+    /// Whether Hyprland currently reports that this window needs attention.
+    pub is_urgent: bool,
 }
 
 /// A connected monitor as reported by Hyprland.
@@ -357,13 +496,20 @@ pub(crate) fn normalize_address(address: &str) -> String {
         .to_owned()
 }
 
-/// Look up a workspace ID from its name, falling back to parsing the name
-/// as an integer for numeric workspaces.
-fn workspace_id_from_name(name: &str, workspaces: &[Workspace]) -> i32 {
-    if let Some(ws) = workspaces.iter().find(|w| w.name == name) {
-        return ws.id;
+impl WorkspaceRef {
+    fn id(&self) -> Option<i32> {
+        match self {
+            Self::Id(id) => Some(*id),
+            Self::Name(_) => None,
+        }
     }
-    name.parse::<i32>().unwrap_or(0)
+
+    fn name(&self) -> Option<&str> {
+        match self {
+            Self::Id(_) => None,
+            Self::Name(name) => Some(name),
+        }
+    }
 }
 
 /// Parse a single raw event line from Hyprland's `.socket2.sock`.
@@ -376,36 +522,62 @@ pub fn parse_event(line: &str) -> Option<HyprEvent> {
     let (name, data) = line.split_once(">>")?;
 
     let event = match name {
-        "workspace" | "workspacev2" => {
-            // workspacev2 is ID,NAME — we only care about the ID.
-            let id_str = data.split(',').next()?;
-            HyprEvent::WorkspaceChanged {
-                id: parse_workspace_id(id_str)?,
+        // Legacy workspace events carry a workspace *name*. The v2 events
+        // prepend the numeric ID and, where relevant, retain the name as the
+        // second field. Do not collapse those formats: named workspaces are
+        // valid and need state lookup before an ID can be known.
+        "workspace" => HyprEvent::WorkspaceChanged {
+            workspace: workspace_ref_from_name(data)?,
+        },
+        "workspacev2" => HyprEvent::WorkspaceChanged {
+            workspace: WorkspaceRef::Id(parse_workspace_id(data.split(',').next()?)?),
+        },
+        "createworkspace" => HyprEvent::WorkspaceAdded {
+            workspace: workspace_ref_from_name(data)?,
+        },
+        "createworkspacev2" => HyprEvent::WorkspaceAdded {
+            workspace: WorkspaceRef::Id(parse_workspace_id(data.split(',').next()?)?),
+        },
+        "destroyworkspace" => HyprEvent::WorkspaceDestroyed {
+            workspace: workspace_ref_from_name(data)?,
+        },
+        "destroyworkspacev2" => HyprEvent::WorkspaceDestroyed {
+            workspace: WorkspaceRef::Id(parse_workspace_id(data.split(',').next()?)?),
+        },
+        "moveworkspace" => {
+            let (workspace, monitor) = data.split_once(',')?;
+            HyprEvent::WorkspaceMoved {
+                workspace: WorkspaceRef::Name(workspace.to_owned()),
+                monitor: monitor.to_owned(),
             }
         }
-        "createworkspace" | "createworkspacev2" => {
-            let id_str = data.split(',').next()?;
-            HyprEvent::WorkspaceAdded {
-                id: parse_workspace_id(id_str)?,
+        "moveworkspacev2" => {
+            let mut parts = data.splitn(3, ',');
+            HyprEvent::WorkspaceMoved {
+                workspace: WorkspaceRef::Id(parse_workspace_id(parts.next()?)?),
+                // ID,NAME,MONITOR
+                monitor: parts.nth(1)?.to_owned(),
             }
         }
-        "destroyworkspace" | "destroyworkspacev2" => {
-            let id_str = data.split(',').next()?;
-            HyprEvent::WorkspaceDestroyed {
-                id: parse_workspace_id(id_str)?,
+        "renameworkspace" => {
+            let (id, name) = data.split_once(',')?;
+            HyprEvent::WorkspaceRenamed {
+                id: parse_workspace_id(id)?,
+                name: name.to_owned(),
             }
-        }
-        "moveworkspace" | "moveworkspacev2" => {
-            let mut parts = data.splitn(2, ',');
-            let id = parse_workspace_id(parts.next()?)?;
-            let monitor = parts.next()?.to_owned();
-            HyprEvent::WorkspaceMoved { id, monitor }
         }
         "focusedmon" => {
             let (name, ws) = data.split_once(',')?;
             HyprEvent::ActiveMonitor {
                 name: name.to_owned(),
-                workspace_id: parse_workspace_id(ws)?,
+                workspace: WorkspaceRef::Name(ws.to_owned()),
+            }
+        }
+        "focusedmonv2" => {
+            let (name, id) = data.split_once(',')?;
+            HyprEvent::ActiveMonitor {
+                name: name.to_owned(),
+                workspace: WorkspaceRef::Id(parse_workspace_id(id)?),
             }
         }
         "activewindow" => {
@@ -467,14 +639,18 @@ pub fn parse_event(line: &str) -> Option<HyprEvent> {
         "closewindow" => HyprEvent::WindowClosed {
             address: data.to_owned(),
         },
-        "movewindow" | "movewindowv2" => {
+        "movewindow" => {
             let mut parts = data.splitn(2, ',');
             let address = parts.next()?.to_owned();
-            let workspace_name = parts.next().unwrap_or("").to_owned();
-            HyprEvent::WindowMoved {
-                address,
-                workspace_name,
-            }
+            let workspace = WorkspaceRef::Name(parts.next().unwrap_or("").to_owned());
+            HyprEvent::WindowMoved { address, workspace }
+        }
+        "movewindowv2" => {
+            let mut parts = data.splitn(3, ',');
+            let address = parts.next()?.to_owned();
+            // ADDRESS,ID,NAME
+            let workspace = WorkspaceRef::Id(parse_workspace_id(parts.next()?)?);
+            HyprEvent::WindowMoved { address, workspace }
         }
         "urgent" => HyprEvent::Urgent {
             address: data.to_owned(),
@@ -521,6 +697,10 @@ fn parse_workspace_id(s: &str) -> Option<i32> {
     s.trim().parse::<i32>().ok()
 }
 
+fn workspace_ref_from_name(name: &str) -> Option<WorkspaceRef> {
+    (!name.trim().is_empty()).then(|| WorkspaceRef::Name(name.to_owned()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,6 +722,7 @@ mod tests {
             workspace_id: ws_id,
             is_focused: false,
             is_fullscreen: false,
+            is_urgent: false,
         }
     }
 
@@ -551,7 +732,9 @@ mod tests {
     fn parses_workspace_changed() {
         assert_eq!(
             parse_event("workspace>>3"),
-            Some(HyprEvent::WorkspaceChanged { id: 3 }),
+            Some(HyprEvent::WorkspaceChanged {
+                workspace: WorkspaceRef::Name("3".into())
+            }),
         );
     }
 
@@ -559,7 +742,9 @@ mod tests {
     fn parses_workspacev2_uses_id_field() {
         assert_eq!(
             parse_event("workspacev2>>5,five"),
-            Some(HyprEvent::WorkspaceChanged { id: 5 }),
+            Some(HyprEvent::WorkspaceChanged {
+                workspace: WorkspaceRef::Id(5)
+            }),
         );
     }
 
@@ -567,7 +752,9 @@ mod tests {
     fn parses_negative_workspace_id() {
         assert_eq!(
             parse_event("workspace>>-99"),
-            Some(HyprEvent::WorkspaceChanged { id: -99 }),
+            Some(HyprEvent::WorkspaceChanged {
+                workspace: WorkspaceRef::Name("-99".into())
+            }),
         );
     }
 
@@ -575,20 +762,24 @@ mod tests {
     fn parses_create_and_destroy_workspace() {
         assert_eq!(
             parse_event("createworkspace>>7"),
-            Some(HyprEvent::WorkspaceAdded { id: 7 }),
+            Some(HyprEvent::WorkspaceAdded {
+                workspace: WorkspaceRef::Name("7".into())
+            }),
         );
         assert_eq!(
             parse_event("destroyworkspace>>7"),
-            Some(HyprEvent::WorkspaceDestroyed { id: 7 }),
+            Some(HyprEvent::WorkspaceDestroyed {
+                workspace: WorkspaceRef::Name("7".into())
+            }),
         );
     }
 
     #[test]
     fn parses_moveworkspace() {
         assert_eq!(
-            parse_event("moveworkspace>>4,DP-1"),
+            parse_event("moveworkspace>>four,DP-1"),
             Some(HyprEvent::WorkspaceMoved {
-                id: 4,
+                workspace: WorkspaceRef::Name("four".into()),
                 monitor: "DP-1".to_owned(),
             }),
         );
@@ -600,7 +791,32 @@ mod tests {
             parse_event("focusedmon>>DP-1,2"),
             Some(HyprEvent::ActiveMonitor {
                 name: "DP-1".to_owned(),
-                workspace_id: 2,
+                workspace: WorkspaceRef::Name("2".into()),
+            }),
+        );
+    }
+
+    #[test]
+    fn parses_v2_monitor_and_workspace_move_payloads() {
+        assert_eq!(
+            parse_event("focusedmonv2>>DP-2,42"),
+            Some(HyprEvent::ActiveMonitor {
+                name: "DP-2".to_owned(),
+                workspace: WorkspaceRef::Id(42),
+            }),
+        );
+        assert_eq!(
+            parse_event("moveworkspacev2>>42,dev,DP-2"),
+            Some(HyprEvent::WorkspaceMoved {
+                workspace: WorkspaceRef::Id(42),
+                monitor: "DP-2".to_owned(),
+            }),
+        );
+        assert_eq!(
+            parse_event("renameworkspace>>42,development"),
+            Some(HyprEvent::WorkspaceRenamed {
+                id: 42,
+                name: "development".to_owned(),
             }),
         );
     }
@@ -721,7 +937,18 @@ mod tests {
             parse_event("movewindow>>aabb,3"),
             Some(HyprEvent::WindowMoved {
                 address: "aabb".to_owned(),
-                workspace_name: "3".to_owned(),
+                workspace: WorkspaceRef::Name("3".into()),
+            }),
+        );
+    }
+
+    #[test]
+    fn parses_movewindowv2_uses_the_id_not_the_name() {
+        assert_eq!(
+            parse_event("movewindowv2>>aabb,42,development"),
+            Some(HyprEvent::WindowMoved {
+                address: "aabb".to_owned(),
+                workspace: WorkspaceRef::Id(42),
             }),
         );
     }
@@ -796,6 +1023,22 @@ mod tests {
     }
 
     #[test]
+    fn only_non_state_events_skip_reconciliation() {
+        assert!(
+            HyprEvent::WorkspaceChanged {
+                workspace: WorkspaceRef::Id(2)
+            }
+            .requires_reconciliation()
+        );
+        assert!(
+            !HyprEvent::SubMap {
+                name: "resize".to_owned()
+            }
+            .requires_reconciliation()
+        );
+    }
+
+    #[test]
     fn line_without_separator_returns_none() {
         assert_eq!(parse_event("no separator here"), None);
     }
@@ -804,7 +1047,9 @@ mod tests {
     fn trims_trailing_newline() {
         assert_eq!(
             parse_event("workspace>>2\n"),
-            Some(HyprEvent::WorkspaceChanged { id: 2 }),
+            Some(HyprEvent::WorkspaceChanged {
+                workspace: WorkspaceRef::Name("2".into())
+            }),
         );
     }
 
@@ -832,16 +1077,33 @@ mod tests {
     #[test]
     fn apply_workspace_changed_updates_active() {
         let mut s = base_state();
-        s.apply_event(&HyprEvent::WorkspaceChanged { id: 2 });
+        s.apply_event(&HyprEvent::WorkspaceChanged {
+            workspace: WorkspaceRef::Id(2),
+        });
         assert_eq!(s.active_workspace, 2);
+    }
+
+    #[test]
+    fn named_workspace_event_updates_the_focused_monitor() {
+        let mut s = base_state();
+        s.workspaces[1].name = "development".to_owned();
+        s.apply_event(&HyprEvent::WorkspaceChanged {
+            workspace: WorkspaceRef::Name("development".to_owned()),
+        });
+        assert_eq!(s.active_workspace, 2);
+        assert_eq!(s.monitors[0].active_workspace, 2);
     }
 
     #[test]
     fn apply_workspace_added_and_destroyed() {
         let mut s = base_state();
-        s.apply_event(&HyprEvent::WorkspaceAdded { id: 9 });
+        s.apply_event(&HyprEvent::WorkspaceAdded {
+            workspace: WorkspaceRef::Id(9),
+        });
         assert!(s.workspaces.iter().any(|w| w.id == 9));
-        s.apply_event(&HyprEvent::WorkspaceDestroyed { id: 9 });
+        s.apply_event(&HyprEvent::WorkspaceDestroyed {
+            workspace: WorkspaceRef::Id(9),
+        });
         assert!(!s.workspaces.iter().any(|w| w.id == 9));
     }
 
@@ -849,7 +1111,9 @@ mod tests {
     fn apply_workspace_added_is_idempotent() {
         let mut s = base_state();
         let before = s.workspaces.len();
-        s.apply_event(&HyprEvent::WorkspaceAdded { id: 1 });
+        s.apply_event(&HyprEvent::WorkspaceAdded {
+            workspace: WorkspaceRef::Id(1),
+        });
         assert_eq!(s.workspaces.len(), before);
     }
 
@@ -891,10 +1155,37 @@ mod tests {
         let mut s = base_state();
         s.apply_event(&HyprEvent::WindowMoved {
             address: "aabb".to_owned(),
-            workspace_name: "2".to_owned(),
+            workspace: WorkspaceRef::Name("2".into()),
         });
         let w = s.windows.iter().find(|w| w.address == "aabb").unwrap();
         assert_eq!(w.workspace_id, 2);
+    }
+
+    #[test]
+    fn moving_an_urgent_window_recomputes_workspace_urgency() {
+        let mut s = base_state();
+        s.apply_event(&HyprEvent::Urgent {
+            address: "ccdd".to_owned(),
+        });
+        s.apply_event(&HyprEvent::WindowMoved {
+            address: "ccdd".to_owned(),
+            workspace: WorkspaceRef::Id(1),
+        });
+        assert!(
+            !s.workspaces
+                .iter()
+                .find(|workspace| workspace.id == 2)
+                .unwrap()
+                .has_urgent
+        );
+        assert!(
+            !s.workspaces
+                .iter()
+                .find(|workspace| workspace.id == 1)
+                .unwrap()
+                .has_urgent,
+            "the moved window is now visible on DP-1"
+        );
     }
 
     #[test]
@@ -902,7 +1193,7 @@ mod tests {
         let mut s = base_state();
         s.apply_event(&HyprEvent::WindowMoved {
             address: "zzzz".to_owned(),
-            workspace_name: "2".to_owned(),
+            workspace: WorkspaceRef::Name("2".into()),
         });
         // Base state unchanged
         assert_eq!(s.windows.len(), 2);
@@ -948,8 +1239,45 @@ mod tests {
             address: "ccdd".to_owned(),
         });
         assert!(s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
-        s.apply_event(&HyprEvent::WorkspaceChanged { id: 2 });
+        s.apply_event(&HyprEvent::WorkspaceChanged {
+            workspace: WorkspaceRef::Id(2),
+        });
         assert!(!s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
+        assert!(
+            !s.windows
+                .iter()
+                .find(|window| window.address == "ccdd")
+                .unwrap()
+                .is_urgent
+        );
+    }
+
+    #[test]
+    fn multi_monitor_sequence_preserves_which_workspace_is_visible() {
+        let mut s = base_state();
+        s.workspaces[1].monitor = "DP-2".to_owned();
+        s.workspaces.push(Workspace {
+            id: 3,
+            name: "3".to_owned(),
+            monitor: "DP-2".to_owned(),
+            has_urgent: false,
+        });
+        s.monitors.push(MonitorInfo {
+            name: "DP-2".to_owned(),
+            width: 1920,
+            height: 1080,
+            active_workspace: 2,
+        });
+        s.apply_event(&HyprEvent::ActiveMonitor {
+            name: "DP-2".to_owned(),
+            workspace: WorkspaceRef::Id(2),
+        });
+        s.apply_event(&HyprEvent::WorkspaceChanged {
+            workspace: WorkspaceRef::Id(3),
+        });
+        assert_eq!(s.focused_monitor, "DP-2");
+        assert_eq!(s.monitors[0].active_workspace, 1);
+        assert_eq!(s.monitors[1].active_workspace, 3);
     }
 
     #[test]
@@ -968,9 +1296,38 @@ mod tests {
         });
         s.apply_event(&HyprEvent::ActiveMonitor {
             name: "DP-2".to_owned(),
-            workspace_id: 2,
+            workspace: WorkspaceRef::Id(2),
         });
         assert!(!s.workspaces.iter().find(|w| w.id == 2).unwrap().has_urgent);
+    }
+
+    #[test]
+    fn authoritative_reconcile_preserves_event_only_urgency() {
+        let mut state = base_state();
+        state.windows[1].is_urgent = true;
+        state.recompute_workspace_urgency();
+
+        let mut fresh = state.clone();
+        fresh.windows[1].is_urgent = false;
+        fresh.workspaces[1].has_urgent = false;
+        state.reconcile_authoritative(fresh);
+
+        assert!(state.windows[1].is_urgent);
+        assert!(state.workspaces[1].has_urgent);
+    }
+
+    #[test]
+    fn authoritative_reconcile_does_not_restore_visible_urgency() {
+        let mut state = base_state();
+        state.windows[1].is_urgent = true;
+        let mut fresh = state.clone();
+        fresh.windows[1].is_urgent = false;
+        fresh.monitors[0].active_workspace = 2;
+
+        state.reconcile_authoritative(fresh);
+
+        assert!(!state.windows[1].is_urgent);
+        assert!(!state.workspaces[1].has_urgent);
     }
 
     #[test]
@@ -1016,7 +1373,7 @@ mod tests {
         let mut s = base_state();
         s.apply_event(&HyprEvent::ActiveMonitor {
             name: "DP-1".to_owned(),
-            workspace_id: 2,
+            workspace: WorkspaceRef::Id(2),
         });
         assert_eq!(s.active_workspace, 2);
         assert_eq!(s.monitors[0].active_workspace, 2);

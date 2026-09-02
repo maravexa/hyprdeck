@@ -9,38 +9,46 @@ the active theme.
 
 ```text
 hyprdeck (binary)
-├──> hyprdeck-core
+├──> hyprdeck-config
+├──> hyprdeck-core ──────> hyprdeck-config
 ├──> hyprdeck-modules ───> hyprdeck-core
 └──> hyprdeck-themes  ───> hyprdeck-core
 ```
 
-`hyprdeck-core` is the base crate. `hyprdeck-modules` and `hyprdeck-themes` are
-sibling dependents of it; neither depends on the other. The `hyprdeck` binary
-depends on all three, injects `hyprdeck_modules::create_module` into `App`, and
-owns the Smithay Client Toolkit/Wayland callbacks.
+`hyprdeck-config` is the lightweight, versioned editor contract and has no
+Wayland or rendering dependencies. `hyprdeck-core` consumes and re-exports it
+for compatibility. `hyprdeck-modules` and `hyprdeck-themes` are sibling
+dependents of core; neither depends on the other. The `hyprdeck` binary injects
+`hyprdeck_modules::create_module` into `App` and owns the Smithay Client
+Toolkit/Wayland callbacks.
 
 ## Startup flow
 
-1. The binary initializes tracing, resolves the canonical configuration path,
-   loads `Config`, and loads the selected `ThemeDefinition`.
-2. It connects to Hyprland IPC, hydrates a shared `HyprState`, and starts the
+1. The binary initializes tracing and claims a private control socket below
+   `$XDG_RUNTIME_DIR/hyprdeck`. A second launch asks the socket owner to reload
+   and exits before connecting to Wayland.
+2. The primary process resolves the canonical configuration path, loads
+   `Config`, and loads the selected `ThemeDefinition`.
+3. It connects to Hyprland IPC, hydrates a shared `HyprState`, and starts the
    event listener.
-3. It connects to the Wayland display, binds compositor, shared-memory,
+4. It connects to the Wayland display, binds compositor, shared-memory,
    layer-shell, output, and seat globals, then discovers advertised outputs.
-4. For every monitor in the hydrated Hyprland state, `App::add_output` creates
+5. For every monitor in the hydrated Hyprland state, `App::add_output` creates
    output state and panels from the theme; the binary creates a layer surface
    for each panel on that output.
-5. The compositor's configure callbacks allocate/update panel buffers and
+6. The compositor's configure callbacks allocate/update panel buffers and
    render the first frame. Module state is then updated and dirty panels are
    rendered.
 
-The configuration is deserialized only at startup. There is no config watcher
-or reload path.
+There is no filesystem watcher. A later `hyprdeck` invocation is the explicit
+reload trigger: the primary process validates the new config and theme, drops
+its old surfaces, and recreates them from the authoritative monitor state.
 
 ## Event, update, and render flow
 
-The Tokio event loop combines four sources: Wayland socket activity, Hyprland
-IPC events, a 250 ms module-update fallback tick, and a 16 ms animation tick
+The Tokio event loop combines Wayland socket activity, Hyprland IPC events,
+single-instance refresh requests, desktop-notification D-Bus requests when
+enabled, module and popup-lifetime fallback ticks, and a 16 ms animation tick
 while an animation is active. IPC events update the shared Hyprland state
 before subscribers receive them. The binary handles monitor add/remove events,
 performs an immediate module update for other state changes, and finally
@@ -56,7 +64,15 @@ dirty state; a popup can redraw without redrawing its parent panel.
 Pointer and keyboard callbacks locate the owning panel surface, route input to
 the appropriate module or popup, and dispatch returned Hyprland actions via
 the command socket. Popups are separate overlay layer surfaces positioned next
-to their triggering module.
+to their triggering module. Pointer leave uses a short cancellable grace period
+so crossing the seam between the panel and popup cannot dismiss the content.
+
+When enabled in configuration, the binary also owns
+`org.freedesktop.Notifications`. Its D-Bus bridge sends requests to a
+deterministic core queue, which handles replacement IDs and expiry. The binary
+creates independent overlay layer surfaces for the visible notification stack;
+these are deliberately separate from module popups so their lifetime and
+placement cannot interfere with an open module dropdown.
 
 ## Invariants
 

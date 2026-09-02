@@ -91,6 +91,17 @@ pub struct WorkspacesStyleDef {
     pub inactive_background: Option<String>,
     /// Label color of inactive workspace indicators.
     pub inactive_foreground: Option<String>,
+    /// Background of workspaces assigned to a different output.
+    pub remote_background: Option<String>,
+    /// Label color of workspaces assigned to a different output.
+    pub remote_foreground: Option<String>,
+    /// Muted urgent background for a workspace on a different output.
+    ///
+    /// This intentionally differs from the local urgent colour so duplicate
+    /// panels communicate which monitor needs attention.
+    pub remote_urgent_background: Option<String>,
+    /// Label color for an urgent workspace on a different output.
+    pub remote_urgent_foreground: Option<String>,
 }
 
 /// Raw button color strings parsed from `[panels.module_styles.menu_button]`.
@@ -159,6 +170,12 @@ pub struct StyleDefinition {
     /// Gap inserted between the icon half and text half in verbose display mode,
     /// in logical pixels. Defaults to `bar_height / 8` when absent.
     pub verbose_text_padding: Option<f32>,
+    /// Inset between the edge of an icon-only module slot and its icon content,
+    /// in logical pixels. Defaults to `2.0` when absent.
+    ///
+    /// This is shared by all built-in icon-only status modules. It does not
+    /// affect [`Self::module_gap`], which remains the space *between* modules.
+    pub icon_padding: Option<f32>,
     /// Horizontal (or vertical, for vertical panels) space between adjacent module
     /// slots in logical pixels. Applied between every adjacent pair of modules
     /// within a group; does not apply at the bar's outer edges (those are

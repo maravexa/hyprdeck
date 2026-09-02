@@ -90,11 +90,8 @@ impl PanelModule for PowerModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        // Square tile: height drives both dimensions.
-        let h = theme.fonts.size + theme.padding.top + theme.padding.bottom;
-        let font_size = render_utils::effective_font_size(h, theme.fonts.size);
-        let w = font_size + theme.padding.left + theme.padding.right;
-        Size::new(w, h)
+        let slot = theme.icon_slot_size;
+        Size::new(slot, slot)
     }
 
     fn update(&mut self, _ctx: &UpdateContext<'_>) -> bool {
@@ -102,8 +99,6 @@ impl PanelModule for PowerModule {
     }
 
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
-        let icon_size = (bounds.height * 0.8).floor();
-
         if self.hovered {
             let bg = render_utils::dim_color(theme.colors.foreground, 0.12);
             render_utils::fill_rounded_rect(canvas, bounds, bg, theme.border_radius);
@@ -114,12 +109,9 @@ impl PanelModule for PowerModule {
         } else {
             theme.colors.foreground
         };
-        render_utils::draw_text_centered(
+        render_utils::draw_power_icon(
             canvas,
-            "\u{23FB}",
-            bounds,
-            &theme.fonts.family,
-            icon_size,
+            render_utils::icon_content_rect(bounds, theme.icon_padding),
             color,
         );
     }
@@ -411,6 +403,8 @@ mod tests {
             padding: Padding::default(),
             border_radius: 4.0,
             opacity: 1.0,
+            icon_slot_size: 24.0,
+            icon_padding: 2.0,
             verbose_text_padding: 4.0,
             module_styles: ResolvedModuleStyles::default(),
         };

@@ -318,16 +318,16 @@ impl PanelModule for LunarModule {
     }
 
     fn desired_size(&self, theme: &ThemeContext) -> Size {
-        let h = theme.fonts.size * 2.0;
+        let slot = theme.icon_slot_size;
         match self.config.display {
-            DisplayMode::Verbose => Size::new(h * 2.0, h),
+            DisplayMode::Verbose => Size::new(slot * 2.0, slot),
             DisplayMode::Icon => {
                 if self.config.show_label && !self.cached_name.is_empty() {
                     let text_width =
                         render_utils::estimate_text_width(&self.cached_name, theme.fonts.size);
-                    Size::new(h + text_width + 4.0, h)
+                    Size::new(slot + text_width + theme.icon_padding.max(2.0), slot)
                 } else {
-                    Size::new(h, h)
+                    Size::new(slot, slot)
                 }
             }
         }
@@ -357,11 +357,20 @@ impl PanelModule for LunarModule {
     fn render(&self, canvas: &mut Pixmap, theme: &ThemeContext, bounds: Rect) {
         match self.config.display {
             DisplayMode::Icon => {
-                let icon_size = render_utils::canonical_icon_size(bounds);
-                let icon_bounds = render_utils::centered_icon_rect(bounds, icon_size);
+                let icon_slot = if self.config.show_label && !self.cached_name.is_empty() {
+                    Rect::new(
+                        bounds.x,
+                        bounds.y,
+                        theme.icon_slot_size.min(bounds.width),
+                        bounds.height,
+                    )
+                } else {
+                    bounds
+                };
+                let icon_bounds = render_utils::icon_content_rect(icon_slot, theme.icon_padding);
                 self.draw_phase_icon(canvas, theme, icon_bounds);
                 if self.config.show_label && !self.cached_name.is_empty() {
-                    let label_x = icon_bounds.x + icon_bounds.width + 4.0;
+                    let label_x = icon_slot.x + icon_slot.width + theme.icon_padding.max(2.0);
                     let label_rect = Rect::new(
                         label_x,
                         bounds.y,
@@ -665,6 +674,8 @@ mod tests {
             padding: Padding::default(),
             border_radius: 0.0,
             opacity: 1.0,
+            icon_slot_size: 24.0,
+            icon_padding: 2.0,
             verbose_text_padding: 4.0,
             module_styles: ResolvedModuleStyles::default(),
         }

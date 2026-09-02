@@ -2,7 +2,14 @@
 name    = "hyprdeck"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "A Wayland-native panel, taskbar, and dock for Hyprland"
+keywords = ["wayland", "hyprland", "panel", "taskbar", "dock"]
+categories = ["gui"]
 
 [[bin]]
 name = "hyprdeck"
@@ -16,9 +23,35 @@ tokio            = { workspace = true }
 tracing          = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono           = { workspace = true }
+serde_json        = { workspace = true }
 wayland-client   = { workspace = true }
 smithay-client-toolkit = { workspace = true }
 clap             = { version = "4", features = ["derive"] }
+zbus             = { workspace = true }
+zbus_macros      = { workspace = true }
+zbus_names       = { workspace = true }
+zvariant          = { workspace = true }
+zvariant_derive   = { workspace = true }
+zvariant_utils    = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"
+
+[package.metadata.deb]
+maintainer = "Mara Vexa"
+copyright = "2026, Mara Vexa"
+license-file = ["../../LICENSE", "0"]
+extended-description = "HyprDeck is a Wayland-native panel, taskbar, and dock for Hyprland."
+section = "utils"
+priority = "optional"
+assets = [
+  ["target/release/hyprdeck", "usr/bin/", "755"],
+  ["../../README.md", "usr/share/doc/hyprdeck/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "target/release/hyprdeck", dest = "/usr/bin/hyprdeck", mode = "755" },
+  { source = "../../README.md", dest = "/usr/share/doc/hyprdeck/README.md", mode = "644" },
+  { source = "../../LICENSE", dest = "/usr/share/licenses/hyprdeck/LICENSE", mode = "644" },
+]

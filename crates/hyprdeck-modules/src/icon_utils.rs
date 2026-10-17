@@ -6,7 +6,11 @@ use std::sync::OnceLock;
 
 /// Look up a freedesktop icon by name at `size` pixels and load it as RGBA.
 pub fn load_freedesktop_icon(name: &str, size: u16) -> Option<image::RgbaImage> {
-    let path = freedesktop_icons::lookup(name).with_size(size).find()?;
+    // Keep the established hicolor/PNG-first policy; GTK theme detection is opt-in.
+    let path = freedesktop_icons::lookup(name)
+        .with_theme("hicolor")
+        .with_size(size)
+        .find()?;
     load_icon_from_path_at_size(&path, size)
 }
 

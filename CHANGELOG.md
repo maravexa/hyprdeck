@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Icon lookup uses freedesktop-icons 0.4 with the existing hicolor/PNG-first
+  policy, corrected nearest-size selection and XDG pixmap fallback.
+
 - The AUR recipe disables distro-level LTO to avoid unresolved `ring` symbols
   when Rust is configured to link with LLVM's `lld`.
 - The Release workflow can be manually dispatched for an existing signed tag

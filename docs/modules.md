@@ -9,6 +9,15 @@ a direct launcher with no popup; its default icon is the desktop menu grid.
 `menu_button` uses a compact `>>` label by default and executes Hyprland's
 `$menu` variable.
 
+## Application icons
+
+Icon lookup keeps the `hicolor` theme, scale 1, and PNG-before-SVG preference;
+it does not switch to the GTK icon theme automatically. Missing or undecodable
+icons keep the existing application-initial fallback. freedesktop-icons 0.4
+chooses the nearest available size by absolute distance and searches XDG
+pixmap directories as well as icon directories. When no exact size exists,
+or only an XDG pixmap is available, the selected icon can differ from 0.2.
+
 ## Lifecycle
 
 A module implements the `hyprdeck_core::PanelModule` trait. All trait calls occur on the panel main thread.

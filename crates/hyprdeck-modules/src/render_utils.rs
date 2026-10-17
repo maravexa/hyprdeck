@@ -872,7 +872,7 @@ mod tests {
             Rect::new(4.0, 4.0, 24.0, 24.0),
             [255, 255, 255, 255],
         );
-        assert!(power.data().chunks_exact(4).any(|px| px[3] > 0));
+        assert!(power.data().as_chunks::<4>().0.iter().any(|px| px[3] > 0));
 
         let mut speaker = Pixmap::new(32, 32).unwrap();
         draw_speaker_icon(
@@ -882,7 +882,7 @@ mod tests {
             75,
             false,
         );
-        assert!(speaker.data().chunks_exact(4).any(|px| px[3] > 0));
+        assert!(speaker.data().as_chunks::<4>().0.iter().any(|px| px[3] > 0));
 
         let mut menu = Pixmap::new(32, 32).unwrap();
         draw_menu_icon(
@@ -890,7 +890,7 @@ mod tests {
             Rect::new(4.0, 4.0, 24.0, 24.0),
             [255, 255, 255, 255],
         );
-        assert!(menu.data().chunks_exact(4).any(|px| px[3] > 0));
+        assert!(menu.data().as_chunks::<4>().0.iter().any(|px| px[3] > 0));
     }
 
     #[test]

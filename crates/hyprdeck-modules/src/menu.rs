@@ -344,6 +344,13 @@ mod tests {
         };
         let mut canvas = Pixmap::new(48, 32).unwrap();
         m.render(&mut canvas, &theme, Rect::new(0.0, 0.0, 48.0, 32.0));
-        assert!(canvas.data().chunks_exact(4).any(|pixel| pixel[3] > 0));
+        assert!(
+            canvas
+                .data()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel[3] > 0)
+        );
     }
 }

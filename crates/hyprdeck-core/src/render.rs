@@ -923,7 +923,7 @@ mod tests {
 
     fn ink_bounds(canvas: &Canvas) -> Option<(u32, u32, u32, u32)> {
         let mut bounds: Option<(u32, u32, u32, u32)> = None;
-        for (i, p) in canvas.pixmap().data().chunks_exact(4).enumerate() {
+        for (i, p) in canvas.pixmap().data().as_chunks::<4>().0.iter().enumerate() {
             if p[3] == 0 {
                 continue;
             }

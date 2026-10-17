@@ -527,7 +527,9 @@ mod tests {
         );
         let positions: Vec<_> = pixmap
             .data()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .enumerate()
             .filter(|(_, pixel)| pixel[3] > 0)
             .map(|(i, _)| (i as u32 % 240, i as u32 / 240))

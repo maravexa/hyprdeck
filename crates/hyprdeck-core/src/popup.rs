@@ -300,11 +300,11 @@ impl PopupState {
 
     /// Tick the popup content. Returns `true` if a redraw is needed.
     pub fn update(&mut self) -> bool {
-        if let Some(content) = &mut self.content {
-            if content.update() {
-                self.dirty = true;
-                return true;
-            }
+        if let Some(content) = &mut self.content
+            && content.update()
+        {
+            self.dirty = true;
+            return true;
         }
         false
     }

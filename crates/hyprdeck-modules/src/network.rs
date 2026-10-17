@@ -247,7 +247,7 @@ impl PanelModule for NetworkModule {
 /// fractional zeros are dropped (`1Gb` not `1.0Gb`).
 pub fn format_link_speed(mbps: u64) -> String {
     if mbps >= 1000 {
-        if mbps % 1000 == 0 {
+        if mbps.is_multiple_of(1000) {
             format!("{}Gb", mbps / 1000)
         } else {
             format!("{:.1}Gb", mbps as f64 / 1000.0)
@@ -322,12 +322,12 @@ fn get_ip(iface: &str) -> Option<String> {
                 if addr.interface_name != iface {
                     continue;
                 }
-                if let Some(sa) = addr.address {
-                    if let Some(sin) = sa.as_sockaddr_in() {
-                        let ip = sin.ip();
-                        if !ip.is_loopback() && !ip.is_unspecified() {
-                            return Some(ip.to_string());
-                        }
+                if let Some(sa) = addr.address
+                    && let Some(sin) = sa.as_sockaddr_in()
+                {
+                    let ip = sin.ip();
+                    if !ip.is_loopback() && !ip.is_unspecified() {
+                        return Some(ip.to_string());
                     }
                 }
             }

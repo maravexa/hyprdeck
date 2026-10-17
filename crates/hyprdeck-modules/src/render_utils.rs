@@ -15,8 +15,17 @@ pub use tiny_skia::Pixmap;
 
 // ── Thread-local font state ───────────────────────────────────────────────────
 
+// Match the core renderer's established generic family defaults.
+fn new_font_system() -> FontSystem {
+    let mut fonts = FontSystem::new();
+    fonts.db_mut().set_sans_serif_family("Fira Sans");
+    fonts.db_mut().set_monospace_family("Fira Mono");
+    fonts.db_mut().set_serif_family("DejaVu Serif");
+    fonts
+}
+
 thread_local! {
-    static FONT_SYSTEM: RefCell<FontSystem> = RefCell::new(FontSystem::new());
+    static FONT_SYSTEM: RefCell<FontSystem> = RefCell::new(new_font_system());
     static SWASH_CACHE: RefCell<SwashCache> = RefCell::new(SwashCache::new());
 }
 
@@ -580,9 +589,9 @@ fn draw_text_impl(
     let line_height = (font_size * 1.2).ceil();
     let metrics = Metrics::new(font_size, line_height);
     let mut buf = Buffer::new(fs, metrics);
-    buf.set_size(fs, Some(rect.width), Some(rect.height));
+    buf.set_size(Some(rect.width), Some(rect.height));
     let attrs = Attrs::new().family(Family::Name(font_family));
-    buf.set_text(fs, text, attrs, Shaping::Advanced);
+    buf.set_text(text, &attrs, Shaping::Advanced, None);
     buf.shape_until_scroll(fs, false);
 
     // Measure text width for horizontal alignment.
@@ -948,5 +957,12 @@ mod tests {
         let data = pm.data();
         let idx = (3 * 10 + 3) * 4;
         assert!(data[idx + 3] > 0, "expected painted pixel at (3,3)");
+    }
+    #[test]
+    fn generic_font_families_match_the_core_renderer() {
+        let fonts = new_font_system();
+        assert_eq!(fonts.db().family_name(&Family::SansSerif), "Fira Sans");
+        assert_eq!(fonts.db().family_name(&Family::Monospace), "Fira Mono");
+        assert_eq!(fonts.db().family_name(&Family::Serif), "DejaVu Serif");
     }
 }

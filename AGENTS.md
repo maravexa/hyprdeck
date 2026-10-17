@@ -35,13 +35,13 @@ cargo test --workspace --all-targets
 cargo test --workspace --doc
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo build --workspace --release
-cargo +1.85.0 check --workspace
+cargo +1.89.0 check --workspace
 cargo audit
 npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#target"
 lychee --offline --include-fragments --root-dir "$PWD" './**/*.md'
 ```
 
-Run the MSRV command only when Rust 1.85.0 is installed through rustup; CI is
+Run the MSRV command only when Rust 1.89.0 is installed through rustup; CI is
 the authoritative MSRV gate. Run `cargo audit` and `lychee` where those tools
 are available. CI runs the Markdown linter and local-link checker for
 documentation changes.

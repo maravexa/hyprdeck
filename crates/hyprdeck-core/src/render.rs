@@ -5,6 +5,15 @@ use crate::layout::{Axis, LayoutResult};
 use crate::module::{PanelModule, ThemeContext};
 use crate::panel::{Color, ResolvedSeparator, ResolvedStyle};
 
+// Retain cosmic-text 0.12's generic families rather than adopting new defaults.
+pub(crate) fn new_font_system() -> cosmic_text::FontSystem {
+    let mut fonts = cosmic_text::FontSystem::new();
+    fonts.db_mut().set_sans_serif_family("Fira Sans");
+    fonts.db_mut().set_monospace_family("Fira Mono");
+    fonts.db_mut().set_serif_family("DejaVu Serif");
+    fonts
+}
+
 /// Canvas wraps a `tiny_skia::Pixmap` and provides high-level draw operations.
 ///
 /// One Canvas is created per panel surface. Modules receive `&mut Pixmap` directly
@@ -29,7 +38,7 @@ impl Canvas {
     /// Create a new canvas with the given pixel dimensions.
     pub fn new(width: u32, height: u32) -> Self {
         let pixmap = Pixmap::new(width.max(1), height.max(1)).expect("failed to allocate pixmap");
-        let font_system = cosmic_text::FontSystem::new();
+        let font_system = new_font_system();
         let swash_cache = cosmic_text::SwashCache::new();
         Self {
             pixmap,
@@ -348,15 +357,10 @@ impl Canvas {
         let metrics = cosmic_text::Metrics::new(font_size, line_height);
         let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
 
-        buffer.set_size(&mut self.font_system, Some(f32::MAX), Some(line_height));
+        buffer.set_size(Some(f32::MAX), Some(line_height));
 
         let attrs = cosmic_text::Attrs::new().family(cosmic_text::Family::Name(font_family));
-        buffer.set_text(
-            &mut self.font_system,
-            text,
-            attrs,
-            cosmic_text::Shaping::Advanced,
-        );
+        buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         buffer
@@ -493,15 +497,10 @@ impl Canvas {
         let metrics = cosmic_text::Metrics::new(font_size, line_height);
         let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
 
-        buffer.set_size(&mut self.font_system, Some(rect.width), Some(rect.height));
+        buffer.set_size(Some(rect.width), Some(rect.height));
 
         let attrs = cosmic_text::Attrs::new().family(cosmic_text::Family::Name(font_family));
-        buffer.set_text(
-            &mut self.font_system,
-            text,
-            attrs,
-            cosmic_text::Shaping::Advanced,
-        );
+        buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         // Measure text width for horizontal alignment.
@@ -912,5 +911,173 @@ mod tests {
                 .save_png(format!("/tmp/moon_phase_{i}.png"))
                 .unwrap();
         }
+    }
+    fn fixture_canvas() -> Canvas {
+        let mut db = cosmic_text::fontdb::Database::new();
+        db.load_font_data(include_bytes!("../tests/fixtures/DejaVuSans.ttf").to_vec());
+        db.set_sans_serif_family("DejaVu Sans");
+        let mut canvas = Canvas::new(240, 80);
+        canvas.font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".into(), db);
+        canvas
+    }
+
+    fn ink_bounds(canvas: &Canvas) -> Option<(u32, u32, u32, u32)> {
+        let mut bounds: Option<(u32, u32, u32, u32)> = None;
+        for (i, p) in canvas.pixmap().data().chunks_exact(4).enumerate() {
+            if p[3] == 0 {
+                continue;
+            }
+            let x = i as u32 % canvas.width();
+            let y = i as u32 / canvas.width();
+            bounds = Some(match bounds {
+                None => (x, y, x, y),
+                Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(x), b.max(y)),
+            });
+        }
+        bounds
+    }
+
+    #[test]
+    fn fixed_font_text_measurement_and_baseline() {
+        for text in [
+            "Panel 12:34",
+            "office ffi",
+            "مرحبا",
+            "A\u{301}bc",
+            "中文 😀",
+        ] {
+            let mut canvas = fixture_canvas();
+            let measured = canvas.measure_text(text, "DejaVu Sans", 16.0);
+            assert!(measured.is_finite() && measured > 0.0);
+            let drawn = canvas.draw_text(
+                text,
+                Rect::new(10.0, 10.0, 220.0, 50.0),
+                "DejaVu Sans",
+                16.0,
+                [255; 4],
+            );
+            assert!(
+                (measured - drawn).abs() < 0.01,
+                "{text}: measured {measured}, drawn {drawn}"
+            );
+            let (left, top, right, bottom) = ink_bounds(&canvas).unwrap();
+            assert!(
+                left >= 10 && right < 230 && top >= 10 && bottom < 60,
+                "{text}: ink escaped roomy text bounds"
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_font_alignment_preserves_vertical_baseline() {
+        let mut canvas = fixture_canvas();
+        let rect = Rect::new(10.0, 10.0, 220.0, 50.0);
+        let width = canvas.measure_text("Panel", "DejaVu Sans", 16.0);
+        let mut bounds = Vec::new();
+        for align in [TextAlign::Left, TextAlign::Center, TextAlign::Right] {
+            canvas.clear();
+            canvas.draw_text_aligned("Panel", rect, "DejaVu Sans", 16.0, [255; 4], align);
+            bounds.push(ink_bounds(&canvas).unwrap());
+        }
+        for (i, factor) in [(1, 0.5), (2, 1.0)] {
+            assert_eq!((bounds[0].1, bounds[0].3), (bounds[i].1, bounds[i].3));
+            let shift = (bounds[i].0 - bounds[0].0) as f32;
+            assert!((shift - (rect.width - width) * factor).abs() <= 1.0);
+        }
+    }
+
+    #[test]
+    fn fixed_font_ellipsis_wrap_and_empty_text() {
+        let mut canvas = fixture_canvas();
+        assert_eq!(canvas.measure_text("", "DejaVu Sans", 16.0), 0.0);
+        assert_eq!(
+            canvas.draw_text(
+                "",
+                Rect::new(0.0, 0.0, 40.0, 20.0),
+                "DejaVu Sans",
+                16.0,
+                [255; 4]
+            ),
+            0.0
+        );
+        assert!(ink_bounds(&canvas).is_none());
+        let width = canvas.draw_text_ellipsis(
+            "A long window title",
+            Rect::new(10.0, 10.0, 70.0, 30.0),
+            "DejaVu Sans",
+            16.0,
+            [255; 4],
+        );
+        assert!(width > 0.0 && width <= 70.0);
+        assert!(ink_bounds(&canvas).unwrap().2 < 80);
+        canvas.clear();
+        let width = canvas.draw_text(
+            "one two three four five",
+            Rect::new(10.0, 0.0, 60.0, 80.0),
+            "DejaVu Sans",
+            16.0,
+            [255; 4],
+        );
+        assert!(width.is_finite() && width <= 60.0);
+        assert!(ink_bounds(&canvas).is_some());
+    }
+
+    #[test]
+    fn rgba_conversion_keeps_premultiplied_alpha() {
+        let image = image::RgbaImage::from_raw(2, 1, vec![255, 0, 0, 128, 0, 255, 0, 0]).unwrap();
+        let pixmap = rgba_image_to_pixmap(&image).unwrap();
+        assert_eq!(pixmap.data(), &[128, 0, 0, 128, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn fixed_font_snapshot_for_migration_review() {
+        let Some(dir) = std::env::var_os("HYPRDECK_RENDER_SNAPSHOT_DIR") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (i, text) in [
+            "Panel 12:34",
+            "office ffi",
+            "مرحبا",
+            "A\u{301}bc",
+            "中文 😀",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let mut canvas = fixture_canvas();
+            let width = canvas.draw_text(
+                text,
+                Rect::new(10.0, 10.0, 220.0, 50.0),
+                "DejaVu Sans",
+                16.0,
+                [255; 4],
+            );
+            println!(
+                "fixture {i}: width={width}, bounds={:?}",
+                ink_bounds(&canvas)
+            );
+            canvas
+                .pixmap()
+                .save_png(dir.join(format!("text-{i}.png")))
+                .unwrap();
+        }
+    }
+    #[test]
+    fn generic_font_families_keep_the_previous_defaults() {
+        let fonts = new_font_system();
+        assert_eq!(
+            fonts.db().family_name(&cosmic_text::Family::SansSerif),
+            "Fira Sans"
+        );
+        assert_eq!(
+            fonts.db().family_name(&cosmic_text::Family::Monospace),
+            "Fira Mono"
+        );
+        assert_eq!(
+            fonts.db().family_name(&cosmic_text::Family::Serif),
+            "DejaVu Serif"
+        );
     }
 }

@@ -14,6 +14,8 @@ depends=(
     'libxkbcommon'
     'wayland'
 )
+# The active compiler must be Rust 1.89.0+; Cargo.toml enforces this.
+# Keep provider dependencies unversioned so rustup remains usable.
 makedepends=(
     'cargo'
     'rust'

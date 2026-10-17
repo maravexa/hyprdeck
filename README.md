@@ -9,7 +9,7 @@ HyprDeck is a Rust/Wayland panel, taskbar, and dock for Hyprland. It is an early
 ## Requirements
 
 - Hyprland on a Wayland session
-- Rust toolchain with edition 2024 support
+- Rust 1.89.0 or newer for source builds (edition 2024)
 - `pkg-config`, Wayland and xkbcommon development headers, and installed system fonts
 - Optional command-line tools used by enabled modules: the command referenced by Hyprland's `$menu` variable (`wofi` is the fallback), `wpctl`, `pactl`, or `amixer` (sound), and `hyprlock`/`systemctl` (power defaults)
 
@@ -34,7 +34,7 @@ format = "%H:%M"
 Start it with `hyprdeck`, or add `exec-once = hyprdeck` to `hyprland.conf`.
 
 After the initial release, the same binary will also be installable with
-`cargo install hyprdeck`, from the AUR as `hyprdeck`, or from the `.deb`,
+`cargo install --locked hyprdeck`, from the AUR as `hyprdeck`, or from the `.deb`,
 `.rpm`, and `.tar.zst` files attached to each GitHub release.
 
 ## Built-in components

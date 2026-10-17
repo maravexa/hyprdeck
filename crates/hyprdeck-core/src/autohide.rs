@@ -88,12 +88,12 @@ impl AutoHideState {
         }
 
         // Check hide delay timer
-        if let Some(timeout) = self.hover_timeout {
-            if std::time::Instant::now() >= timeout {
-                self.hover_timeout = None;
-                if self.phase == AnimPhase::Visible {
-                    self.phase = AnimPhase::Hiding;
-                }
+        if let Some(timeout) = self.hover_timeout
+            && std::time::Instant::now() >= timeout
+        {
+            self.hover_timeout = None;
+            if self.phase == AnimPhase::Visible {
+                self.phase = AnimPhase::Hiding;
             }
         }
 

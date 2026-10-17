@@ -11,7 +11,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 authors = ["Mara Vexa"]
 license = "MIT"
 repository = "https://github.com/maravexa/hyprdeck"
@@ -27,13 +27,12 @@ smithay-client-toolkit = { version = "0.20", default-features = false, features 
 wayland-client         = "0.31"
 
 tiny-skia    = "0.12"
-cosmic-text  = "0.12"
-image        = { version = "0.25", default-features = false, features = ["png", "ico"] }
+cosmic-text  = "0.19"
+image        = { version = "0.25.10", default-features = false, features = ["png", "ico"] }
 resvg        = { version = "0.48", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "signal"] }
-# Pin the whole zbus family because newer compatible semver releases raised
-# their MSRV beyond HyprDeck's Rust 1.85 support policy.
+# Keep the tested zbus family pinned; updating D-Bus is a separate migration.
 zbus = { version = "=5.8.0", default-features = false, features = ["tokio"] }
 zbus_macros = "=5.8.0"
 zbus_names = "=4.2.0"

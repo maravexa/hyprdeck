@@ -363,13 +363,12 @@ impl PanelModule for SoundModule {
         }
 
         // Check if backend detection completed.
-        if !self.backend_detected {
-            if let Ok(mut g) = self.detected_shared.lock() {
-                if let Some(backend) = g.take() {
-                    self.detected_backend = backend;
-                    self.backend_detected = true;
-                }
-            }
+        if !self.backend_detected
+            && let Ok(mut g) = self.detected_shared.lock()
+            && let Some(backend) = g.take()
+        {
+            self.detected_backend = backend;
+            self.backend_detected = true;
         }
 
         if let Some(outcome) = self
@@ -737,19 +736,18 @@ impl PopupContent for SoundPopup {
             theme.colors.foreground,
         );
 
-        if let Ok(shared) = self.shared.try_lock() {
-            if let Some(error) = &shared.last_error {
-                let error_rect =
-                    Rect::new(bounds.x + 8.0, bounds.y + 92.0, bounds.width - 16.0, 16.0);
-                render_utils::draw_text_centered(
-                    canvas,
-                    error,
-                    error_rect,
-                    &theme.fonts.family,
-                    font_size * 0.72,
-                    render_utils::dim_color(theme.colors.foreground, 0.65),
-                );
-            }
+        if let Ok(shared) = self.shared.try_lock()
+            && let Some(error) = &shared.last_error
+        {
+            let error_rect = Rect::new(bounds.x + 8.0, bounds.y + 92.0, bounds.width - 16.0, 16.0);
+            render_utils::draw_text_centered(
+                canvas,
+                error,
+                error_rect,
+                &theme.fonts.family,
+                font_size * 0.72,
+                render_utils::dim_color(theme.colors.foreground, 0.65),
+            );
         }
 
         // ── Sink name (smaller, dimmed) ──
@@ -815,39 +813,40 @@ impl PopupContent for SoundPopup {
         );
 
         let mut y = bounds.y + 108.0;
-        if self.show_mixer && self.show_input {
-            if let Some(input) = &self.state.default_input {
-                render_utils::draw_text_ellipsis(
-                    canvas,
-                    &format!("Input: {}  (click to change)", input.description),
-                    Rect::new(bounds.x + 8.0, y, bounds.width - 16.0, 18.0),
-                    &theme.fonts.family,
-                    font_size * 0.82,
-                    render_utils::dim_color(theme.colors.foreground, 0.75),
-                );
-                draw_mixer_slider(
-                    canvas,
-                    bounds.x,
-                    y + 20.0,
-                    bounds.width,
-                    input.volume_percent,
-                    theme,
-                );
-                let input_label = if input.muted {
-                    "Muted".to_owned()
-                } else {
-                    format!("{}%", input.volume_percent)
-                };
-                render_utils::draw_text_centered(
-                    canvas,
-                    &input_label,
-                    Rect::new(bounds.x, y + 35.0, bounds.width, 18.0),
-                    &theme.fonts.family,
-                    font_size * 0.78,
-                    theme.colors.foreground,
-                );
-                y += 66.0;
-            }
+        if self.show_mixer
+            && self.show_input
+            && let Some(input) = &self.state.default_input
+        {
+            render_utils::draw_text_ellipsis(
+                canvas,
+                &format!("Input: {}  (click to change)", input.description),
+                Rect::new(bounds.x + 8.0, y, bounds.width - 16.0, 18.0),
+                &theme.fonts.family,
+                font_size * 0.82,
+                render_utils::dim_color(theme.colors.foreground, 0.75),
+            );
+            draw_mixer_slider(
+                canvas,
+                bounds.x,
+                y + 20.0,
+                bounds.width,
+                input.volume_percent,
+                theme,
+            );
+            let input_label = if input.muted {
+                "Muted".to_owned()
+            } else {
+                format!("{}%", input.volume_percent)
+            };
+            render_utils::draw_text_centered(
+                canvas,
+                &input_label,
+                Rect::new(bounds.x, y + 35.0, bounds.width, 18.0),
+                &theme.fonts.family,
+                font_size * 0.78,
+                theme.colors.foreground,
+            );
+            y += 66.0;
         }
         if self.show_mixer && self.show_applications {
             let applications = self.state.applications.iter().take(self.max_applications);

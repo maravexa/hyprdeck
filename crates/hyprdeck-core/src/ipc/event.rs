@@ -279,10 +279,10 @@ impl HyprState {
                 if self.windows.len() == before {
                     debug!(address = %normalized, "closewindow for unknown window");
                 }
-                if let Some(active) = &self.active_window {
-                    if active.address == normalized {
-                        self.active_window = None;
-                    }
+                if let Some(active) = &self.active_window
+                    && active.address == normalized
+                {
+                    self.active_window = None;
                 }
                 self.recompute_workspace_urgency();
             }
@@ -360,12 +360,11 @@ impl HyprState {
                     active.is_fullscreen = *enter;
                     active.address.clone()
                 });
-                if let Some(addr) = addr {
-                    if !addr.is_empty() {
-                        if let Some(win) = self.windows.iter_mut().find(|w| w.address == addr) {
-                            win.is_fullscreen = *enter;
-                        }
-                    }
+                if let Some(addr) = addr
+                    && !addr.is_empty()
+                    && let Some(win) = self.windows.iter_mut().find(|w| w.address == addr)
+                {
+                    win.is_fullscreen = *enter;
                 }
             }
             HyprEvent::WindowTitle { address } => {
@@ -380,10 +379,10 @@ impl HyprState {
                 } else {
                     debug!(address = %normalized, "windowtitlev2 for unknown window");
                 }
-                if let Some(active) = self.active_window.as_mut() {
-                    if active.address == normalized {
-                        active.title = title.clone();
-                    }
+                if let Some(active) = self.active_window.as_mut()
+                    && active.address == normalized
+                {
+                    active.title = title.clone();
                 }
             }
             HyprEvent::LayoutChanged { .. } | HyprEvent::SubMap { .. } => {

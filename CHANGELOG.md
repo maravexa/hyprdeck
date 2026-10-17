@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Source builds and all workspace crates now require Rust 1.89.0, matching
+  cosmic-text 0.19 and image 0.25.10. Text shaping uses HarfRust; glyph
+  rasterization and font fallback can differ from the earlier renderer.
+
 ### Fixed
 
 - Icon lookup uses freedesktop-icons 0.4 with the existing hicolor/PNG-first

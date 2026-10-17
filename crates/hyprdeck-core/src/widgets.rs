@@ -9,7 +9,7 @@ use crate::geometry::Rect;
 use crate::panel::Color;
 
 thread_local! {
-    static FONT_SYSTEM: RefCell<FontSystem> = RefCell::new(FontSystem::new());
+    static FONT_SYSTEM: RefCell<FontSystem> = RefCell::new(crate::render::new_font_system());
     static SWASH_CACHE: RefCell<SwashCache> = RefCell::new(SwashCache::new());
 }
 
@@ -314,9 +314,9 @@ fn draw_text_centered(
             let line_height = (font_size * 1.2).ceil();
             let metrics = Metrics::new(font_size, line_height);
             let mut buf = Buffer::new(&mut fs, metrics);
-            buf.set_size(&mut fs, Some(rect.width), Some(rect.height));
+            buf.set_size(Some(rect.width), Some(rect.height));
             let attrs = Attrs::new().family(Family::Name(font_family));
-            buf.set_text(&mut fs, text, attrs, Shaping::Advanced);
+            buf.set_text(text, &attrs, Shaping::Advanced, None);
             buf.shape_until_scroll(&mut fs, false);
 
             let text_width: f32 = buf.layout_runs().map(|r| r.line_w).fold(0.0f32, f32::max);
@@ -508,5 +508,40 @@ mod tests {
         let size = compute_table_size(&config, 15);
         assert_eq!(size.width, 190.0); // 5 * 38
         assert_eq!(size.height, 24.0 + 15.0 * 26.0); // header + 15 rows (no title)
+    }
+    #[test]
+    fn fixed_font_popup_text_stays_centered() {
+        let mut db = cosmic_text::fontdb::Database::new();
+        db.load_font_data(include_bytes!("../tests/fixtures/DejaVuSans.ttf").to_vec());
+        FONT_SYSTEM
+            .with(|fs| *fs.borrow_mut() = FontSystem::new_with_locale_and_db("en-US".into(), db));
+        SWASH_CACHE.with(|cache| *cache.borrow_mut() = SwashCache::new());
+        let mut pixmap = Pixmap::new(240, 80).unwrap();
+        draw_text_centered(
+            &mut pixmap,
+            "12:34",
+            Rect::new(10.0, 10.0, 220.0, 50.0),
+            "DejaVu Sans",
+            16.0,
+            [255; 4],
+        );
+        let positions: Vec<_> = pixmap
+            .data()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, pixel)| pixel[3] > 0)
+            .map(|(i, _)| (i as u32 % 240, i as u32 / 240))
+            .collect();
+        assert!(!positions.is_empty());
+        let left = positions.iter().map(|p| p.0).min().unwrap();
+        let right = positions.iter().map(|p| p.0).max().unwrap();
+        assert!(((left + right) as f32 / 2.0 - 120.0).abs() <= 2.0);
+        assert!(
+            positions
+                .iter()
+                .all(|(x, y)| (10..230).contains(x) && (10..60).contains(y))
+        );
     }
 }

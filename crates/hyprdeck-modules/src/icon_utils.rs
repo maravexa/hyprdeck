@@ -56,7 +56,13 @@ fn load_svg(path: &Path, size: u16) -> Option<image::RgbaImage> {
     );
 
     let mut rgba = image::RgbaImage::new(target, target);
-    for (source, destination) in pixmap.data().chunks_exact(4).zip(rgba.pixels_mut()) {
+    for (source, destination) in pixmap
+        .data()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(rgba.pixels_mut())
+    {
         let alpha = source[3];
         let unpremultiply = |channel: u8| {
             if alpha == 0 {

@@ -8,7 +8,7 @@ issue first so the intended behaviour and scope can be discussed.
 HyprDeck is a Rust workspace targeting Linux and Wayland. Install a Rust
 toolchain with the `rustfmt` and `clippy` components, plus the Wayland, XKB, and
 `pkg-config` development dependencies described in the
-[development guide](docs/development.md). The CI MSRV check uses Rust 1.85.0;
+[development guide](docs/development.md). The CI MSRV check uses Rust 1.89.0;
 use that version or newer when making a change.
 
 ```sh

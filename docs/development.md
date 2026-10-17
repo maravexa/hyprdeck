@@ -2,13 +2,18 @@
 
 ## Prerequisites
 
-HyprDeck builds on Linux. Install Rust 1.85.0 or newer (the CI MSRV is 1.85.0)
+HyprDeck builds on Linux. Install Rust 1.89.0 or newer (the CI MSRV is 1.89.0)
 with the `rustfmt` and `clippy` components. The native build dependencies used
 by CI on Debian/Ubuntu are:
 
 ```sh
 sudo apt-get install libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
 ```
+
+Source builds and all workspace crates require Rust 1.89.0 or newer, including
+`hyprdeck-config` consumers. If the distribution compiler is older, use a
+compatible Rust toolchain before building; prebuilt binaries do not require
+a Rust compiler. This does not change the native runtime dependencies.
 
 Equivalent development packages are required on other distributions. The
 application uses Wayland client, XKB, and layer-shell APIs; a normal build and
@@ -49,6 +54,21 @@ fragments. If `lychee` is installed locally, run:
 ```sh
 lychee --offline --include-fragments --root-dir "$PWD" './**/*.md'
 ```
+
+## Renderer migration checks
+
+The text tests use a bundled, licensed DejaVu Sans font so metrics and pixels
+can be compared independently of host fonts. The fixtures cover Latin text,
+ligatures, Arabic, combining marks, missing-glyph fallback, alignment, empty
+text, wrapping and ellipsis. They do not validate every installed font or CJK
+font fallback. PNG and palette-PNG fixtures plus PNG/BMP-backed ICO fixtures
+check decoding and alpha handling.
+
+The generic fallback families remain Fira Sans, Fira Mono and DejaVu Serif.
+Named theme fonts, manual alignment, popup scale and configuration are unchanged.
+The HarfRust/Swash migration can still change font matching and anti-aliasing;
+fixed-font comparisons found unchanged measured widths and ink bounds, with
+small rasterization differences. A live Hyprland comparison is still required.
 
 ## Logging
 

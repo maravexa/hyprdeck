@@ -34,11 +34,11 @@ impl std::error::Error for ThemeLoadError {}
 /// 2. Embedded shipped themes (compiled in via `include_dir!`)
 pub fn load_theme(name: &str) -> Result<ThemeDefinition, ThemeLoadError> {
     // 1. Check user themes directory first.
-    if let Some(user_path) = user_theme_path(name) {
-        if user_path.exists() {
-            let src = std::fs::read_to_string(&user_path).map_err(ThemeLoadError::Io)?;
-            return ThemeDefinition::from_toml(&src).map_err(ThemeLoadError::ParseError);
-        }
+    if let Some(user_path) = user_theme_path(name)
+        && user_path.exists()
+    {
+        let src = std::fs::read_to_string(&user_path).map_err(ThemeLoadError::Io)?;
+        return ThemeDefinition::from_toml(&src).map_err(ThemeLoadError::ParseError);
     }
 
     // 2. Fall back to embedded themes.

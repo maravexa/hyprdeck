@@ -111,7 +111,7 @@ jobs:
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   msrv:
-    name: MSRV (1.85.0)
+    name: MSRV (1.89.0)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -119,7 +119,7 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
 
-      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: dtolnay/rust-toolchain@1.89.0
 
       - uses: Swatinem/rust-cache@v2
 

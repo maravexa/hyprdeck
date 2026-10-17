@@ -644,10 +644,10 @@ impl AppState {
         let target_id = surface.id();
         for (output_name, output) in &self.app.outputs {
             for (panel_idx, panel) in output.panels.iter().enumerate() {
-                if let Some(layer) = &panel.layer_surface {
-                    if layer.wl_surface().id() == target_id {
-                        return Some((output_name.clone(), panel_idx));
-                    }
+                if let Some(layer) = &panel.layer_surface
+                    && layer.wl_surface().id() == target_id
+                {
+                    return Some((output_name.clone(), panel_idx));
                 }
             }
         }
@@ -1261,11 +1261,11 @@ impl OutputHandler for AppState {
         _qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
-        if let Some(info) = self.output_state.info(&output) {
-            if let Some(name) = &info.name {
-                debug!("Wayland output advertised: {}", name);
-                self.wl_outputs.insert(name.clone(), output);
-            }
+        if let Some(info) = self.output_state.info(&output)
+            && let Some(name) = &info.name
+        {
+            debug!("Wayland output advertised: {}", name);
+            self.wl_outputs.insert(name.clone(), output);
         }
     }
 
@@ -1276,10 +1276,10 @@ impl OutputHandler for AppState {
         output: wl_output::WlOutput,
     ) {
         // Update the name→WlOutput map when output properties change.
-        if let Some(info) = self.output_state.info(&output) {
-            if let Some(name) = &info.name {
-                self.wl_outputs.entry(name.clone()).or_insert(output);
-            }
+        if let Some(info) = self.output_state.info(&output)
+            && let Some(name) = &info.name
+        {
+            self.wl_outputs.entry(name.clone()).or_insert(output);
         }
     }
 
@@ -1366,10 +1366,10 @@ impl LayerShellHandler for AppState {
                     surface.height = height;
                     surface.canvas.resize(width, height);
                     let needed = (width as usize * height as usize * 4).max(4096);
-                    if needed > surface.pool.len() {
-                        if let Err(error) = surface.pool.resize(needed) {
-                            error!(?error, "failed to resize notification shared memory");
-                        }
+                    if needed > surface.pool.len()
+                        && let Err(error) = surface.pool.resize(needed)
+                    {
+                        error!(?error, "failed to resize notification shared memory");
                     }
                 }
                 surface.configured = true;
@@ -1421,10 +1421,10 @@ impl LayerShellHandler for AppState {
                     }
                     if let Some(pool) = &mut panel.popup.pool {
                         let needed = (w * h * 4) as usize;
-                        if needed > pool.len() {
-                            if let Err(e) = pool.resize(needed) {
-                                error!("Failed to resize popup shm pool: {}", e);
-                            }
+                        if needed > pool.len()
+                            && let Err(e) = pool.resize(needed)
+                        {
+                            error!("Failed to resize popup shm pool: {}", e);
                         }
                     }
                 }
@@ -1463,10 +1463,10 @@ impl LayerShellHandler for AppState {
             // Grow the SHM pool if needed.
             if let Some(pool) = &mut panel.pool {
                 let needed = (w * h * 4) as usize;
-                if needed > pool.len() {
-                    if let Err(e) = pool.resize(needed) {
-                        error!("Failed to resize shm pool: {}", e);
-                    }
+                if needed > pool.len()
+                    && let Err(e) = pool.resize(needed)
+                {
+                    error!("Failed to resize shm pool: {}", e);
                 }
             }
         }
@@ -1771,12 +1771,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
 
             command = notification_rx.recv(), if notification_service_active => {
-                if let Some(command) = command {
-                    if app_state.process_notification(command) {
+                if let Some(command) = command
+                    && app_state.process_notification(command) {
                         let state = hypr_state.read().await;
                         app_state.sync_notification_surfaces(&state, &qh, true);
                     }
-                }
             }
 
             // Wayland compositor events

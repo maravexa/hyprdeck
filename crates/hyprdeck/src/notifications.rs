@@ -42,7 +42,9 @@ impl NotificationService {
             replaces_id
         };
         let actions = actions
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| NotificationAction {
                 key: pair[0].clone(),
                 label: pair[1].clone(),

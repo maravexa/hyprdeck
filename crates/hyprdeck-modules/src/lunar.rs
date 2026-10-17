@@ -709,7 +709,7 @@ mod tests {
                 m.render(&mut pm, &theme, Rect::new(0.0, 0.0, 64.0, 32.0));
 
                 if mode_toml == "canvas" || mode_toml == "icons" {
-                    let painted = pm.data().chunks_exact(4).any(|px| px[3] > 0);
+                    let painted = pm.data().as_chunks::<4>().0.iter().any(|px| px[3] > 0);
                     assert!(painted, "canvas-backed mode {mode_toml} painted nothing");
                 }
             }

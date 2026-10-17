@@ -1366,10 +1366,10 @@ impl LayerShellHandler for AppState {
                     surface.height = height;
                     surface.canvas.resize(width, height);
                     let needed = (width as usize * height as usize * 4).max(4096);
-                    if needed > surface.pool.len()
-                        && let Err(error) = surface.pool.resize(needed)
-                    {
-                        error!(?error, "failed to resize notification shared memory");
+                    if needed > surface.pool.len() {
+                        if let Err(error) = surface.pool.resize(needed) {
+                            error!(?error, "failed to resize notification shared memory");
+                        }
                     }
                 }
                 surface.configured = true;

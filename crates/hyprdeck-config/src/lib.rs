@@ -228,24 +228,31 @@ impl Config {
         if self.theme.trim().is_empty() {
             diagnostics.push(ConfigDiagnostic::error("theme", "theme must not be empty"));
         }
-        if let Some(opacity) = self.theme_overrides.bar_opacity
-            && !(0.0..=1.0).contains(&opacity)
+        if self
+            .theme_overrides
+            .bar_opacity
+            .is_some_and(|opacity| !(0.0..=1.0).contains(&opacity))
         {
             diagnostics.push(ConfigDiagnostic::error(
                 "theme_overrides.bar_opacity",
                 "bar opacity must be between 0 and 1",
             ));
         }
-        if let Some(size) = self.theme_overrides.font_size
-            && (!size.is_finite() || size <= 0.0)
+        if self
+            .theme_overrides
+            .font_size
+            .is_some_and(|size| !size.is_finite() || size <= 0.0)
         {
             diagnostics.push(ConfigDiagnostic::error(
                 "theme_overrides.font_size",
                 "font size must be a finite positive number",
             ));
         }
-        if let Some(color) = &self.theme_overrides.accent_color
-            && !is_hex_color(color)
+        if self
+            .theme_overrides
+            .accent_color
+            .as_ref()
+            .is_some_and(|color| !is_hex_color(color))
         {
             diagnostics.push(ConfigDiagnostic::error(
                 "theme_overrides.accent_color",
@@ -825,6 +832,29 @@ format = "%H:%M"
         config.theme_overrides.bar_opacity = Some(1.5);
         config.theme_overrides.accent_color = Some("red".into());
         assert_eq!(config.validate().len(), 3);
+    }
+
+    #[test]
+    fn validation_preserves_optional_theme_override_boundaries() {
+        let mut config = sample_config();
+        assert!(config.validate().is_empty());
+        for opacity in [0.0, 1.0] {
+            config.theme_overrides.bar_opacity = Some(opacity);
+            config.theme_overrides.font_size = Some(12.0);
+            config.theme_overrides.accent_color = Some("#12345678".into());
+            assert!(config.validate().is_empty());
+        }
+        for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0] {
+            config.theme_overrides.bar_opacity = Some(invalid);
+            config.theme_overrides.font_size = Some(invalid);
+            let diagnostics = config.validate();
+            assert_eq!(diagnostics.len(), 2);
+            assert_eq!(diagnostics[0].path, "theme_overrides.bar_opacity");
+            assert_eq!(diagnostics[1].path, "theme_overrides.font_size");
+        }
+        config.theme_overrides.bar_opacity = None;
+        config.theme_overrides.font_size = Some(0.0);
+        assert_eq!(config.validate()[0].path, "theme_overrides.font_size");
     }
 
     #[test]

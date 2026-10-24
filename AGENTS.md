@@ -10,7 +10,10 @@ These instructions apply to the whole workspace. More-specific `AGENTS.md` files
 - Each crate's `Cargo.toml` defines its dependency boundary.
 - `crates/*/src/` defines runtime behavior and public Rust contracts;
   `crates/hyprdeck-config` owns the editor-safe configuration contract.
-- `themes/*/theme.toml` defines shipped theme data; `crates/hyprdeck-themes/src/defaults.rs` embeds it.
+- `themes/*/theme.toml` defines shipped theme source data. Keep the packaged copies in
+  `crates/hyprdeck-themes/themes/` identical: `crates/hyprdeck-themes/src/defaults.rs`
+  embeds those crate-local copies, and its `packaged_theme_copies_match_workspace_sources`
+  test checks parity.
 - `.github/workflows/ci.yml` defines required CI checks; `.github/workflows/security.yml` defines the dependency audit.
 - The documentation index at `docs/README.md` identifies the maintained project documents.
 
@@ -40,6 +43,9 @@ cargo audit
 npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#target"
 lychee --offline --include-fragments --root-dir "$PWD" './**/*.md'
 ```
+
+For theme changes, the focused parity check is
+`cargo test -p hyprdeck-themes packaged_theme_copies_match_workspace_sources`.
 
 Run the MSRV command only when Rust 1.89.0 is installed through rustup; CI is
 the authoritative MSRV gate. Run `cargo audit` and `lychee` where those tools

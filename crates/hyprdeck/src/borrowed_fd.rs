@@ -39,7 +39,7 @@ mod tests {
         let (mut socket, mut peer) = UnixStream::pair()?;
         socket.set_nonblocking(true)?;
         let registered = BorrowedAsyncFd::new(socket.as_fd())?;
-        for byte in [b'a', b'b'] {
+        for byte in *b"ab" {
             peer.write_all(&[byte])?;
             let mut guard = tokio::time::timeout(Duration::from_secs(2), registered.readable())
                 .await
@@ -62,7 +62,7 @@ mod tests {
     async fn dropping_registration_preserves_socket_and_allows_reregistration() -> io::Result<()> {
         let (socket, mut peer) = UnixStream::pair()?;
         socket.set_nonblocking(true)?;
-        for byte in [b'x', b'y'] {
+        for byte in *b"xy" {
             let registered = BorrowedAsyncFd::new(socket.as_fd())?;
             peer.write_all(&[byte])?;
             let _guard = tokio::time::timeout(Duration::from_secs(2), registered.readable())

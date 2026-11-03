@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::os::unix::io::{AsFd, AsRawFd, RawFd};
+use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -31,6 +31,7 @@ use wayland_client::{
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
 };
 
+mod borrowed_fd;
 mod instance;
 mod notifications;
 
@@ -42,6 +43,7 @@ use hyprdeck_core::{
 };
 use tokio::sync::mpsc;
 
+use crate::borrowed_fd::BorrowedAsyncFd;
 use crate::instance::{InstanceClaim, InstanceControl};
 use crate::notifications::NotificationCommand;
 
@@ -1515,21 +1517,6 @@ struct Cli {
     validate_config: Option<std::path::PathBuf>,
 }
 
-// ── Wayland fd helper ─────────────────────────────────────────────────────────
-
-/// Wraps a raw Wayland fd for use with `tokio::io::unix::AsyncFd` without
-/// taking ownership of (and thus closing) the fd.
-///
-/// # Safety
-/// The caller must ensure the underlying `Connection` outlives this wrapper.
-struct WaylandFdRef(RawFd);
-
-impl std::os::unix::io::AsRawFd for WaylandFdRef {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0
-    }
-}
-
 fn editor_config_schema() -> Result<hyprdeck_core::ConfigSchema, hyprdeck_themes::ThemeLoadError> {
     let themes = hyprdeck_themes::embedded_theme_names()
         .into_iter()
@@ -1717,10 +1704,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // ── 10. Async Wayland fd ──────────────────────────────
     //
-    // Borrow the raw fd from the Connection for use with tokio's reactor.
-    // Safety: `conn` is declared above and outlives `wayland_async_fd`.
-    let wayland_raw_fd: RawFd = conn.as_fd().as_raw_fd();
-    let wayland_async_fd = tokio::io::unix::AsyncFd::new(WaylandFdRef(wayland_raw_fd))?;
+    // Retain the Connection borrow until Tokio deregisters the descriptor.
+    // The wrapper exposes readiness only; it never closes or replaces the fd.
+    let wayland_async_fd = BorrowedAsyncFd::new(conn.as_fd())?;
 
     // ── 11. Main event loop ───────────────────────────────
     //

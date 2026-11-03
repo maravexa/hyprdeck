@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Wayland readiness retains a borrowed connection descriptor and uses the fixed
+  Tokio 1.53.3 registration API (RUSTSEC-2026-0386).
+
 - Icon lookup uses freedesktop-icons 0.4 with the existing hicolor/PNG-first
   policy, corrected nearest-size selection and XDG pixmap fallback.
 

@@ -37,7 +37,7 @@ zbus = { version = "=5.8.0", default-features = false, features = ["tokio"] }
 zbus_macros = "=5.8.0"
 zbus_names = "=4.2.0"
 zvariant = "=5.8.0"
-zvariant_derive = "=5.8.0"
+zvariant_derive = "=5.15.1"
 zvariant_utils = "=3.2.0"
 
 serde = { version = "1", features = ["derive"] }

@@ -34,7 +34,7 @@ resvg        = { version = "0.48", default-features = false, features = ["text",
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "signal"] }
 # Keep the tested zbus family pinned; updating D-Bus is a separate migration.
 zbus = { version = "=5.8.0", default-features = false, features = ["tokio"] }
-zbus_macros = "=5.8.0"
+zbus_macros = "=6.2.1"
 zbus_names = "=4.2.0"
 zvariant = "=5.8.0"
 zvariant_derive = "=5.8.0"

@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libwayland-dev libwayland-client0 libxkbcommon-dev pkg-config dbus-daemon libglib2.0-bin
 
       - uses: dtolnay/rust-toolchain@stable
 

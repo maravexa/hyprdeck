@@ -30,6 +30,7 @@ This index is the navigation point for maintained project documentation. Source 
 ## Decisions
 
 - [Architecture decision records](decisions/README.md)
+- [Unified zbus 6 notification API](decisions/2026-11-16-zbus6-notification-bridge.md)
 
 ## Generated API documentation
 

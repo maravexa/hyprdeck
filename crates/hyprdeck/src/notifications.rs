@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use hyprdeck_core::{NotificationAction, NotificationRequest};
 use tokio::sync::mpsc;
-use zbus::zvariant::OwnedValue;
+use zbus::OwnedVariant;
 
 #[derive(Debug)]
 pub enum NotificationCommand {
@@ -33,7 +33,7 @@ impl NotificationService {
         summary: String,
         body: String,
         actions: Vec<String>,
-        _hints: HashMap<String, OwnedValue>,
+        _hints: HashMap<String, OwnedVariant>,
         expire_timeout: i32,
     ) -> u32 {
         let id = if replaces_id == 0 {
@@ -92,15 +92,19 @@ impl NotificationService {
 pub async fn start_notification_service(
     tx: mpsc::UnboundedSender<NotificationCommand>,
 ) -> zbus::Result<zbus::Connection> {
-    zbus::connection::Builder::session()?
-        .name("org.freedesktop.Notifications")?
+    zbus::connection::Builder::session()
+        // Notification startup must neither displace another daemon nor surrender
+        // this daemon's name to a second instance.
+        .replace_existing_names(false)
+        .allow_name_replacements(false)
+        .name("org.freedesktop.Notifications")
         .serve_at(
             "/org/freedesktop/Notifications",
             NotificationService {
                 tx,
                 next_id: AtomicU32::new(1),
             },
-        )?
+        )
         .build()
         .await
 }

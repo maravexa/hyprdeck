@@ -32,13 +32,8 @@ image        = { version = "0.25.10", default-features = false, features = ["png
 resvg        = { version = "0.48", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "signal"] }
-# Keep the tested zbus family pinned; updating D-Bus is a separate migration.
-zbus = { version = "=5.8.0", default-features = false, features = ["tokio"] }
-zbus_macros = "=5.8.0"
-zbus_names = "=4.2.0"
-zvariant = "=5.8.0"
-zvariant_derive = "=5.8.0"
-zvariant_utils = "=3.2.0"
+# zbus 6 owns its wire types and derives; retain explicit Tokio/service features.
+zbus = { version = "=6.3.0", default-features = false, features = ["tokio", "service", "proxy", "tracing", "unixexec"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

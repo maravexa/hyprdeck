@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Desktop notifications use the unified zbus 6 API and retain Rust 1.89 support;
+  the unmaintained standalone wire/name/derive dependencies are removed.
+
 - Source builds and all workspace crates now require Rust 1.89.0, matching
   cosmic-text 0.19 and image 0.25.10. Text shaping uses HarfRust; glyph
   rasterization and font fallback can differ from the earlier renderer.
 
 ### Fixed
+
+- Notification startup refuses an occupied service name instead of replacing
+  another daemon. Real private-bus tests cover zbus and independent GLib clients.
+- Locked Quinn protocol/UDP and rustix patch releases resolve the current
+  stream-limit, Retry-token, truncated-datagram and xattr-buffer advisories.
 
 - Wayland readiness retains a borrowed connection descriptor and uses the fixed
   Tokio 1.53.3 registration API (RUSTSEC-2026-0386).

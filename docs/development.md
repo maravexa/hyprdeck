@@ -55,6 +55,32 @@ fragments. If `lychee` is installed locally, run:
 lychee --offline --include-fragments --root-dir "$PWD" './**/*.md'
 ```
 
+## Isolated notification D-Bus regression
+
+```sh
+cargo test -p hyprdeck --test notification_dbus --locked
+```
+
+This requires `dbus-run-session` and `gdbus` (`dbus-daemon` and `libglib2.0-bin`
+on Debian/Ubuntu) and launches a private bus, a production
+notification-service bridge, and a separate client connection. It verifies
+capabilities, server information, notification creation and replacement,
+actions, compound image hints, timeout values, invalid signatures, and close
+requests over the real wire protocol. An independent GLib client verifies external
+wire compatibility, and a second service must fail to claim the occupied name.
+It does not connect to the desktop bus or start Wayland. Run the normal wrapper; the ignored child test is reserved
+for that wrapper's isolated subprocess.
+
+The workspace uses zbus 6 for the service, wire values, names and derives; do not
+reintroduce the unmaintained standalone zvariant family or mixed derive pins.
+Its Rust 1.89 requirement matches the workspace minimum. The explicit Tokio,
+service, proxy and tracing features preserve the async runtime and diagnostic
+behavior. The `unixexec` feature retains the transport accepted by zbus 5; the
+separate default runtime and the new `ibus` transport remain disabled.
+Run this regression on the minimum compiler as well as the development compiler
+when changing that dependency. It does not establish notification rendering,
+click handling, signal support, or live compositor acceptance.
+
 ## Renderer migration checks
 
 The text tests use a bundled, licensed DejaVu Sans font so metrics and pixels

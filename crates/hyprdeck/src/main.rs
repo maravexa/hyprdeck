@@ -249,12 +249,21 @@ impl AppState {
         let available = state
             .monitors
             .iter()
-            .filter(|monitor| {
-                monitor.width > 0
-                    && monitor.height > 0
-                    && self.wl_outputs.contains_key(&monitor.name)
+            .filter(|monitor| monitor.width > 0 && monitor.height > 0)
+            .filter_map(|monitor| {
+                let output = self.wl_outputs.get(&monitor.name)?;
+                // Layer-shell sizes and pointer coordinates use compositor logical units.
+                let size = self
+                    .output_state
+                    .info(output)
+                    .and_then(|info| info.logical_size)
+                    .filter(|&(width, height)| width > 0 && height > 0);
+                let (width, height) = match size {
+                    Some((width, height)) => (width as u32, height as u32),
+                    None => (monitor.width, monitor.height),
+                };
+                Some((monitor.name.clone(), width, height))
             })
-            .map(|monitor| (monitor.name.clone(), monitor.width, monitor.height))
             .collect::<Vec<_>>();
         for (name, width, height) in available {
             let needs_rebuild = self

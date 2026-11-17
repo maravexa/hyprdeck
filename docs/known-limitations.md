@@ -25,4 +25,4 @@ the `body` and `persistence` capabilities.
 - Calendar `show_week_numbers` and `first_day`, clock `secondary_timezone`, favorites `show_running_indicator`, and lunar `locale` are exposed in configuration/schema data but are not consumed by current rendering; lunar labels remain English.
 - Themes can parse `menu_button` color overrides, but the current style resolver applies only `window_list` and `workspaces` overrides.
 - Theme `separator_color` is resolved, but separators remain disabled; dock `background_radius` and `background_opacity` are parsed but not used by the renderer.
-- Wayland scale-factor and output-transform callbacks are present but do not update rendering, so HiDPI, fractional-scale, and transformed-output behavior is not complete.
+- Panel and popup layout uses the logical output size advertised by Wayland. When that size is unavailable, HyprDeck falls back to the Hyprland monitor dimensions. Rendering at native pixel density on scaled outputs remains incomplete.

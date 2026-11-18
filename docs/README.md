@@ -20,6 +20,7 @@ This index is the navigation point for maintained project documentation. Source 
 - [Project overview](../README.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Architecture](architecture.md)
+- [Agent collaboration research and proofs](agent-collaboration.md)
 - [Configuration](configuration.md)
 - [Development](development.md)
 - [Modules](modules.md)

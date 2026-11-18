@@ -31,6 +31,7 @@ zbus             = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 [package.metadata.deb]
 maintainer = "Mara Vexa"

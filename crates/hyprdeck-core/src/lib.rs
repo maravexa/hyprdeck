@@ -1,6 +1,7 @@
 pub mod action;
 pub mod app;
 pub mod autohide;
+pub mod collaboration;
 pub mod config;
 pub mod geometry;
 pub mod ipc;

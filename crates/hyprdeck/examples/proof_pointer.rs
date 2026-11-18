@@ -1,4 +1,4 @@
-//! One pointer click on the disposable compositor created by Proof B.
+//! A private pointer for the disposable compositor fixtures.
 
 use std::io::{self, Read};
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
@@ -33,6 +33,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let socket = PathBuf::from(args.next().ok_or("missing fixture socket")?);
     let x = args.next().ok_or("missing pixel x")?.parse::<u32>()?;
+    let y = args
+        .next()
+        .map(|value| value.parse())
+        .transpose()?
+        .unwrap_or(16);
     let runtime = socket.parent().ok_or("missing runtime directory")?;
     let scratch = runtime.parent().ok_or("missing fixture directory")?;
     if scratch.parent() != Some(std::path::Path::new("/tmp"))
@@ -44,6 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         || socket.canonicalize()? != socket
         || !socket.metadata()?.file_type().is_socket()
         || !(1..1024).contains(&x)
+        || !(1..768).contains(&y)
+        || args.next().is_some()
     {
         return Err("expected the private Proof B runtime and a fixture coordinate".into());
     }
@@ -53,26 +60,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager: ZwlrVirtualPointerManagerV1 = globals.bind(&handle, 1..=1, ())?;
     let pointer = manager.create_virtual_pointer(None, &handle, ());
     queue.roundtrip(&mut PointerFixture)?;
-    // Keep the seat active while the panel registers its pointer capability.
+    // Keep the seat registered until the controller verifies its receipts.
     let mut control = [0];
-    io::stdin().read_exact(&mut control)?;
-    if control != *b"m" {
-        return Err("expected fixture motion command".into());
+    let mut input = io::stdin().lock();
+    while input.read(&mut control)? != 0 {
+        match control[0] {
+            b'm' => pointer.motion_absolute(0, x, y, 1024, 768),
+            b'r' => pointer.motion_absolute(0, 30, 30, 1024, 768),
+            b'c' => {
+                pointer.button(1, 0x110, ButtonState::Pressed);
+                pointer.frame();
+                pointer.button(2, 0x110, ButtonState::Released);
+            }
+            _ => return Err("invalid fixture control byte".into()),
+        }
+        pointer.frame();
+        queue.roundtrip(&mut PointerFixture)?;
     }
-    pointer.motion_absolute(0, x, 16, 1024, 768);
-    pointer.frame();
-    queue.roundtrip(&mut PointerFixture)?;
-
-    io::stdin().read_exact(&mut control)?;
-    if control != *b"c" {
-        return Err("invalid fixture control byte".into());
-    }
-    pointer.button(1, 0x110, ButtonState::Pressed);
-    pointer.frame();
-    pointer.button(2, 0x110, ButtonState::Released);
-    pointer.frame();
-    queue.roundtrip(&mut PointerFixture)?;
-    // Keep the virtual seat until the controller verifies the compositor result.
-    let _ = io::stdin().read(&mut control)?;
     Ok(())
 }

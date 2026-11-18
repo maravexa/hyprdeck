@@ -122,6 +122,27 @@ production storage, retention, or recovery contract.
   broker interface needed by the task. Turn interruption and broker revocation
   are separate events. [Codex app-server][app-server].
 
+### Sign-in acceptance, before any account connection
+
+Keep registration in the local provider process. For initial authorization,
+bind a loopback callback on `127.0.0.1` and associate the exact redirect URI,
+fresh `state`, OIDC `nonce`, and PKCE S256 verifier with the attempt. Use the
+documented dynamic agent client for registration. Retain only the issued client
+ID for later authorization. Validate the ID token signature, issuer, audience,
+expiry and nonce, then check the granted inference scope on the token response.
+Reject cancelled, mismatched, incomplete, or insufficient-scope responses.
+[Client registration and token validation][sign-in].
+
+Maintain separate records for verified account and client IDs. Treat resulting
+credentials as provider-local data. Serialize token refresh, atomically store
+successful rotations with owner-only access and keep tokens out of evidence.
+On sign-out, revoke with the issued client and remove the runtime credentials.
+Test refresh failure, denied scope, and account/workspace mismatch with offline
+responses before any consent flow. A separate authorized live check would
+confirm the actual workspace is eligible and stream a synthetic prompt to a
+terminal `response.completed`. Keep a failed or interrupted stream distinct from
+completion. [Accounts and sessions][provider-sessions], [Models and inference][inference].
+
 ## Uncertainty register
 
 | Evidence | Experiment or decision still required |
@@ -187,6 +208,50 @@ p95 patch-to-frame under five seconds on a warm build. Track cold-build time,
 evidence bytes and any manual interventions separately. Hardware validation
 covers physical displays, scaling, real input, screen lock, and suspend.
 
+## Follow-up validation fixtures
+
+### Native window scope
+
+On a private nested Hyprland compositor, map two benign GTK windows. Grant A,
+exercise a verified click, then overlap B at the same coordinates and advance
+the grant revision. Verify stale, foreign-resource, and revoked requests produce
+no pointer dispatch. As a negative control, send one unscoped seat click at the
+old position and look for B's independent click receipt. The native toplevel
+capture test selects A by its lifetime identifier and checks A's pixels while
+B visibly covers it. It rejects the old capture identifier after A closes and
+a window with the same title opens. The fixture requires the existing Wayland prerequisites
+plus GTK 4 Python bindings, `wayland-info`, and ImageMagick.
+
+```sh
+python3 -B proofs/nested-wayland.py target/debug/hyprdeck \
+  target/debug/examples/proof_pointer ../proof-window \
+  --window-scope target/debug/examples/scoped_session
+```
+
+Keep the compositor seat and its unrestricted pointer protocol outside an
+agent's reach in a shared human desktop. Broker checks at the controller
+boundary can deny known stale requests. Delivery to an exact surface needs
+an adapter that enforces the target at delivery or an isolated agent session.
+[Wayland capture source protocol][capture-source], [Virtual pointer protocol][virtual-pointer].
+
+### Broker restart and journal recovery
+
+Crash the broker fixture after a synchronized dispatch and a durable test
+effect and before recording the result. Restart with empty policy state.
+Mark the outstanding effect unknown without replay. Reject the old grant
+before and after issuing a grant to a new runtime, preserve the previous
+journal bytes, and verify that repeated restart does not duplicate recovery.
+Fail closed on a torn final record and preserve its bytes for inspection.
+
+```sh
+cargo build --locked -p hyprdeck-core --example scoped_session
+python3 -B proofs/journal_restart.py target/debug/examples/scoped_session ../proof-restart
+```
+
+The fixture uses one journal writer, simulated effects and a process crash.
+Power-loss durability, journal locking, and a production broker's recovery
+policy need separate validation.
+
 [sc]: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html
 [rd]: https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html
 [portal]: https://github.com/hyprwm/xdg-desktop-portal-hyprland/blob/master/hyprland.portal
@@ -195,6 +260,10 @@ covers physical displays, scaling, real input, screen lock, and suspend.
 [siwc]: https://developers.openai.com/siwc/token-sharing-open-source
 [sign-in]: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
 [preview]: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+[provider-sessions]: https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions
+[inference]: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
 [app-server]: https://learn.chatgpt.com/docs/app-server
 [ollama]: https://docs.ollama.com/api/openai-compatibility
 [hyprtests]: https://wiki.hypr.land/contributing-and-debugging/tests/
+[capture-source]: https://wayland.app/protocols/ext-image-capture-source-v1
+[virtual-pointer]: https://wayland.app/protocols/wlr-virtual-pointer-unstable-v1

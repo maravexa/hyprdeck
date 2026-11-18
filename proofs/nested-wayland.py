@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import tempfile
@@ -73,7 +74,7 @@ def color_center(ppm, color):
     return matches[len(matches) // 2] if matches else None
 
 
-def run(binary, pointer_fixture, evidence, scratch):
+def run(binary, pointer_fixture, evidence, scratch, window_scope):
     repo = Path(__file__).resolve().parents[1]
     runtime = scratch / "r"
     config = scratch / "config"
@@ -108,7 +109,8 @@ def run(binary, pointer_fixture, evidence, scratch):
 
     def launch(log, *args, stdin=None, **extra_env):
         with (evidence / log).open("wb") as output:
-            process = subprocess.Popen(args, env=env | extra_env, stdin=stdin, stdout=output, stderr=output)
+            process = subprocess.Popen(args, env=env | extra_env, stdin=stdin, stdout=output, stderr=output,
+                                       start_new_session=True)
         children.append(process)
         return process
 
@@ -148,6 +150,12 @@ def run(binary, pointer_fixture, evidence, scratch):
         monitor, = wait_for("nested monitor", monitors, (hypr,))
         assert (monitor["width"], monitor["height"], monitor["scale"]) == (1024, 768, 1)
         command("hyprctl", "dispatch", "workspace", "1")
+        if window_scope:
+            worker = Path(__file__).with_name("scoped_windows.py")
+            scope = launch("scope-worker.log", "python3", "-B", worker, pointer_fixture, window_scope, evidence)
+            if scope.wait(timeout=55) != 0:
+                raise RuntimeError("Window-scope fixture failed. See scope-worker.log.")
+            return
         deck = launch("hyprdeck.log", str(binary))
         deck_log = evidence / "hyprdeck.log"
         wait_for("HyprDeck startup", lambda: b"Entering main event loop" in deck_log.read_bytes(), (deck, hypr))
@@ -209,13 +217,19 @@ def run(binary, pointer_fixture, evidence, scratch):
         raise
     finally:
         for child in reversed(children):
-            if child.poll() is None:
-                child.terminate()
-                try:
-                    child.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    child.kill()
-                    child.wait(timeout=3)
+            try:
+                os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                child.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.wait(timeout=3)
 
 
 def main():
@@ -223,11 +237,13 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("pointer_fixture", type=Path)
     parser.add_argument("new_evidence_directory", type=Path)
+    parser.add_argument("--window-scope", type=Path, help="run the two-window fixture with this scope policy driver")
     args = parser.parse_args()
     evidence = args.new_evidence_directory.resolve()
     evidence.mkdir(mode=0o700)
     with tempfile.TemporaryDirectory(prefix="hd.", dir="/tmp") as scratch:
-        run(args.binary.resolve(strict=True), args.pointer_fixture.resolve(strict=True), evidence, Path(scratch))
+        scope = args.window_scope.resolve(strict=True) if args.window_scope else None
+        run(args.binary.resolve(strict=True), args.pointer_fixture.resolve(strict=True), evidence, Path(scratch), scope)
 
 
 if __name__ == "__main__":
